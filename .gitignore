@@ -1,0 +1,40 @@
+# Virtual environments
+venv/
+uav_env/
+env/
+.venv/
+
+# Third-party repositories (install separately)
+gym-pybullet-drones/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Trained models (large binaries, regenerate by training)
+corridor_models/
+curriculum_models/
+warehouse_models/
+
+# Debug output (regenerated on every run)
+cam_debug/
+scan_debug/
+debug_*.png
+simdi_*.png
+*.log
+mavsdk2_log.txt
+
+# Runtime scratch files
+ready_*.txt
+drone_*_ready.txt
+start.txt
+
+# Generated results (regenerate by running the scan)
+inventory_scanned.json
+aruco_test_results.csv
+
+# OS files
+.DS_Store
+Thumbs.db

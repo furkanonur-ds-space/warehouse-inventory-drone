@@ -1,0 +1,542 @@
+[
+  {
+    "id": "KUTU-A1-K1-SOL-001",
+    "model": "invbox_001",
+    "x": -6.83,
+    "y": -4.0,
+    "z": 0.52,
+    "face": "sol",
+    "island": 1,
+    "level": 1
+  },
+  {
+    "id": "KUTU-A1-K1-SAG-002",
+    "model": "invbox_002",
+    "x": -5.57,
+    "y": -4.0,
+    "z": 0.52,
+    "face": "sag",
+    "island": 1,
+    "level": 1
+  },
+  {
+    "id": "KUTU-A1-K1-SOL-003",
+    "model": "invbox_003",
+    "x": -6.83,
+    "y": 0.0,
+    "z": 0.52,
+    "face": "sol",
+    "island": 1,
+    "level": 1
+  },
+  {
+    "id": "KUTU-A1-K1-SAG-004",
+    "model": "invbox_004",
+    "x": -5.57,
+    "y": 0.0,
+    "z": 0.52,
+    "face": "sag",
+    "island": 1,
+    "level": 1
+  },
+  {
+    "id": "KUTU-A1-K1-SOL-005",
+    "model": "invbox_005",
+    "x": -6.83,
+    "y": 4.0,
+    "z": 0.52,
+    "face": "sol",
+    "island": 1,
+    "level": 1
+  },
+  {
+    "id": "KUTU-A1-K1-SAG-006",
+    "model": "invbox_006",
+    "x": -5.57,
+    "y": 4.0,
+    "z": 0.52,
+    "face": "sag",
+    "island": 1,
+    "level": 1
+  },
+  {
+    "id": "KUTU-A1-K2-SOL-007",
+    "model": "invbox_007",
+    "x": -6.83,
+    "y": -4.0,
+    "z": 1.17,
+    "face": "sol",
+    "island": 1,
+    "level": 2
+  },
+  {
+    "id": "KUTU-A1-K2-SAG-008",
+    "model": "invbox_008",
+    "x": -5.57,
+    "y": -4.0,
+    "z": 1.17,
+    "face": "sag",
+    "island": 1,
+    "level": 2
+  },
+  {
+    "id": "KUTU-A1-K2-SOL-009",
+    "model": "invbox_009",
+    "x": -6.83,
+    "y": 0.0,
+    "z": 1.17,
+    "face": "sol",
+    "island": 1,
+    "level": 2
+  },
+  {
+    "id": "KUTU-A1-K2-SAG-010",
+    "model": "invbox_010",
+    "x": -5.57,
+    "y": 0.0,
+    "z": 1.17,
+    "face": "sag",
+    "island": 1,
+    "level": 2
+  },
+  {
+    "id": "KUTU-A1-K2-SOL-011",
+    "model": "invbox_011",
+    "x": -6.83,
+    "y": 4.0,
+    "z": 1.17,
+    "face": "sol",
+    "island": 1,
+    "level": 2
+  },
+  {
+    "id": "KUTU-A1-K2-SAG-012",
+    "model": "invbox_012",
+    "x": -5.57,
+    "y": 4.0,
+    "z": 1.17,
+    "face": "sag",
+    "island": 1,
+    "level": 2
+  },
+  {
+    "id": "KUTU-A1-K3-SOL-013",
+    "model": "invbox_013",
+    "x": -6.83,
+    "y": -4.0,
+    "z": 1.8199999999999998,
+    "face": "sol",
+    "island": 1,
+    "level": 3
+  },
+  {
+    "id": "KUTU-A1-K3-SAG-014",
+    "model": "invbox_014",
+    "x": -5.57,
+    "y": -4.0,
+    "z": 1.8199999999999998,
+    "face": "sag",
+    "island": 1,
+    "level": 3
+  },
+  {
+    "id": "KUTU-A1-K3-SOL-015",
+    "model": "invbox_015",
+    "x": -6.83,
+    "y": 0.0,
+    "z": 1.8199999999999998,
+    "face": "sol",
+    "island": 1,
+    "level": 3
+  },
+  {
+    "id": "KUTU-A1-K3-SAG-016",
+    "model": "invbox_016",
+    "x": -5.57,
+    "y": 0.0,
+    "z": 1.8199999999999998,
+    "face": "sag",
+    "island": 1,
+    "level": 3
+  },
+  {
+    "id": "KUTU-A1-K3-SOL-017",
+    "model": "invbox_017",
+    "x": -6.83,
+    "y": 4.0,
+    "z": 1.8199999999999998,
+    "face": "sol",
+    "island": 1,
+    "level": 3
+  },
+  {
+    "id": "KUTU-A1-K3-SAG-018",
+    "model": "invbox_018",
+    "x": -5.57,
+    "y": 4.0,
+    "z": 1.8199999999999998,
+    "face": "sag",
+    "island": 1,
+    "level": 3
+  },
+  {
+    "id": "KUTU-A2-K1-SOL-019",
+    "model": "invbox_019",
+    "x": -2.23,
+    "y": -4.0,
+    "z": 0.52,
+    "face": "sol",
+    "island": 2,
+    "level": 1
+  },
+  {
+    "id": "KUTU-A2-K1-SAG-020",
+    "model": "invbox_020",
+    "x": -0.9700000000000001,
+    "y": -4.0,
+    "z": 0.52,
+    "face": "sag",
+    "island": 2,
+    "level": 1
+  },
+  {
+    "id": "KUTU-A2-K1-SOL-021",
+    "model": "invbox_021",
+    "x": -2.23,
+    "y": 0.0,
+    "z": 0.52,
+    "face": "sol",
+    "island": 2,
+    "level": 1
+  },
+  {
+    "id": "KUTU-A2-K1-SAG-022",
+    "model": "invbox_022",
+    "x": -0.9700000000000001,
+    "y": 0.0,
+    "z": 0.52,
+    "face": "sag",
+    "island": 2,
+    "level": 1
+  },
+  {
+    "id": "KUTU-A2-K1-SOL-023",
+    "model": "invbox_023",
+    "x": -2.23,
+    "y": 4.0,
+    "z": 0.52,
+    "face": "sol",
+    "island": 2,
+    "level": 1
+  },
+  {
+    "id": "KUTU-A2-K1-SAG-024",
+    "model": "invbox_024",
+    "x": -0.9700000000000001,
+    "y": 4.0,
+    "z": 0.52,
+    "face": "sag",
+    "island": 2,
+    "level": 1
+  },
+  {
+    "id": "KUTU-A2-K2-SOL-025",
+    "model": "invbox_025",
+    "x": -2.23,
+    "y": -4.0,
+    "z": 1.17,
+    "face": "sol",
+    "island": 2,
+    "level": 2
+  },
+  {
+    "id": "KUTU-A2-K2-SAG-026",
+    "model": "invbox_026",
+    "x": -0.9700000000000001,
+    "y": -4.0,
+    "z": 1.17,
+    "face": "sag",
+    "island": 2,
+    "level": 2
+  },
+  {
+    "id": "KUTU-A2-K2-SOL-027",
+    "model": "invbox_027",
+    "x": -2.23,
+    "y": 0.0,
+    "z": 1.17,
+    "face": "sol",
+    "island": 2,
+    "level": 2
+  },
+  {
+    "id": "KUTU-A2-K2-SAG-028",
+    "model": "invbox_028",
+    "x": -0.9700000000000001,
+    "y": 0.0,
+    "z": 1.17,
+    "face": "sag",
+    "island": 2,
+    "level": 2
+  },
+  {
+    "id": "KUTU-A2-K2-SOL-029",
+    "model": "invbox_029",
+    "x": -2.23,
+    "y": 4.0,
+    "z": 1.17,
+    "face": "sol",
+    "island": 2,
+    "level": 2
+  },
+  {
+    "id": "KUTU-A2-K2-SAG-030",
+    "model": "invbox_030",
+    "x": -0.9700000000000001,
+    "y": 4.0,
+    "z": 1.17,
+    "face": "sag",
+    "island": 2,
+    "level": 2
+  },
+  {
+    "id": "KUTU-A2-K3-SOL-031",
+    "model": "invbox_031",
+    "x": -2.23,
+    "y": -4.0,
+    "z": 1.8199999999999998,
+    "face": "sol",
+    "island": 2,
+    "level": 3
+  },
+  {
+    "id": "KUTU-A2-K3-SAG-032",
+    "model": "invbox_032",
+    "x": -0.9700000000000001,
+    "y": -4.0,
+    "z": 1.8199999999999998,
+    "face": "sag",
+    "island": 2,
+    "level": 3
+  },
+  {
+    "id": "KUTU-A2-K3-SOL-033",
+    "model": "invbox_033",
+    "x": -2.23,
+    "y": 0.0,
+    "z": 1.8199999999999998,
+    "face": "sol",
+    "island": 2,
+    "level": 3
+  },
+  {
+    "id": "KUTU-A2-K3-SAG-034",
+    "model": "invbox_034",
+    "x": -0.9700000000000001,
+    "y": 0.0,
+    "z": 1.8199999999999998,
+    "face": "sag",
+    "island": 2,
+    "level": 3
+  },
+  {
+    "id": "KUTU-A2-K3-SOL-035",
+    "model": "invbox_035",
+    "x": -2.23,
+    "y": 4.0,
+    "z": 1.8199999999999998,
+    "face": "sol",
+    "island": 2,
+    "level": 3
+  },
+  {
+    "id": "KUTU-A2-K3-SAG-036",
+    "model": "invbox_036",
+    "x": -0.9700000000000001,
+    "y": 4.0,
+    "z": 1.8199999999999998,
+    "face": "sag",
+    "island": 2,
+    "level": 3
+  },
+  {
+    "id": "KUTU-A3-K1-SOL-037",
+    "model": "invbox_037",
+    "x": 2.37,
+    "y": -4.0,
+    "z": 0.52,
+    "face": "sol",
+    "island": 3,
+    "level": 1
+  },
+  {
+    "id": "KUTU-A3-K1-SAG-038",
+    "model": "invbox_038",
+    "x": 3.63,
+    "y": -4.0,
+    "z": 0.52,
+    "face": "sag",
+    "island": 3,
+    "level": 1
+  },
+  {
+    "id": "KUTU-A3-K1-SOL-039",
+    "model": "invbox_039",
+    "x": 2.37,
+    "y": 0.0,
+    "z": 0.52,
+    "face": "sol",
+    "island": 3,
+    "level": 1
+  },
+  {
+    "id": "KUTU-A3-K1-SAG-040",
+    "model": "invbox_040",
+    "x": 3.63,
+    "y": 0.0,
+    "z": 0.52,
+    "face": "sag",
+    "island": 3,
+    "level": 1
+  },
+  {
+    "id": "KUTU-A3-K1-SOL-041",
+    "model": "invbox_041",
+    "x": 2.37,
+    "y": 4.0,
+    "z": 0.52,
+    "face": "sol",
+    "island": 3,
+    "level": 1
+  },
+  {
+    "id": "KUTU-A3-K1-SAG-042",
+    "model": "invbox_042",
+    "x": 3.63,
+    "y": 4.0,
+    "z": 0.52,
+    "face": "sag",
+    "island": 3,
+    "level": 1
+  },
+  {
+    "id": "KUTU-A3-K2-SOL-043",
+    "model": "invbox_043",
+    "x": 2.37,
+    "y": -4.0,
+    "z": 1.17,
+    "face": "sol",
+    "island": 3,
+    "level": 2
+  },
+  {
+    "id": "KUTU-A3-K2-SAG-044",
+    "model": "invbox_044",
+    "x": 3.63,
+    "y": -4.0,
+    "z": 1.17,
+    "face": "sag",
+    "island": 3,
+    "level": 2
+  },
+  {
+    "id": "KUTU-A3-K2-SOL-045",
+    "model": "invbox_045",
+    "x": 2.37,
+    "y": 0.0,
+    "z": 1.17,
+    "face": "sol",
+    "island": 3,
+    "level": 2
+  },
+  {
+    "id": "KUTU-A3-K2-SAG-046",
+    "model": "invbox_046",
+    "x": 3.63,
+    "y": 0.0,
+    "z": 1.17,
+    "face": "sag",
+    "island": 3,
+    "level": 2
+  },
+  {
+    "id": "KUTU-A3-K2-SOL-047",
+    "model": "invbox_047",
+    "x": 2.37,
+    "y": 4.0,
+    "z": 1.17,
+    "face": "sol",
+    "island": 3,
+    "level": 2
+  },
+  {
+    "id": "KUTU-A3-K2-SAG-048",
+    "model": "invbox_048",
+    "x": 3.63,
+    "y": 4.0,
+    "z": 1.17,
+    "face": "sag",
+    "island": 3,
+    "level": 2
+  },
+  {
+    "id": "KUTU-A3-K3-SOL-049",
+    "model": "invbox_049",
+    "x": 2.37,
+    "y": -4.0,
+    "z": 1.8199999999999998,
+    "face": "sol",
+    "island": 3,
+    "level": 3
+  },
+  {
+    "id": "KUTU-A3-K3-SAG-050",
+    "model": "invbox_050",
+    "x": 3.63,
+    "y": -4.0,
+    "z": 1.8199999999999998,
+    "face": "sag",
+    "island": 3,
+    "level": 3
+  },
+  {
+    "id": "KUTU-A3-K3-SOL-051",
+    "model": "invbox_051",
+    "x": 2.37,
+    "y": 0.0,
+    "z": 1.8199999999999998,
+    "face": "sol",
+    "island": 3,
+    "level": 3
+  },
+  {
+    "id": "KUTU-A3-K3-SAG-052",
+    "model": "invbox_052",
+    "x": 3.63,
+    "y": 0.0,
+    "z": 1.8199999999999998,
+    "face": "sag",
+    "island": 3,
+    "level": 3
+  },
+  {
+    "id": "KUTU-A3-K3-SOL-053",
+    "model": "invbox_053",
+    "x": 2.37,
+    "y": 4.0,
+    "z": 1.8199999999999998,
+    "face": "sol",
+    "island": 3,
+    "level": 3
+  },
+  {
+    "id": "KUTU-A3-K3-SAG-054",
+    "model": "invbox_054",
+    "x": 3.63,
+    "y": 4.0,
+    "z": 1.8199999999999998,
+    "face": "sag",
+    "island": 3,
+    "level": 3
+  }
+]
