@@ -18,26 +18,26 @@ def add_include(model_type, x, y, z, roll=0, pitch=0, yaw=0):
       <pose>{x} {y} {z} {roll} {pitch} {yaw}</pose>
     </include>''')
 
-# ── DIS DUVARLAR (20x20m) ──
+# --- OUTER WALLS (20x20 m enclosure) ---
 add_include('warehouse_wall', 0, 10, 2, 0, 0, 0)
 add_include('warehouse_wall', 0, -10, 2, 0, 0, 0)
 add_include('warehouse_wall', 10, 0, 2, 0, 0, 1.5708)
 add_include('warehouse_wall', -10, 0, 2, 0, 0, 1.5708)
 
-# ── 3 ADA ──
+# --- THREE SHELF ISLANDS ---
 islands_x = [-6.2, -1.6, 3.0]
 for i, cx in enumerate(islands_x):
     add_include(f'island_{i+1}', cx, 0, 0, 0, 0, 0)
 
-# ── 54 KUTU (envanterden) ──
+# --- 54 BOXES, positions read from ground truth ---
 for item in inventory:
     add_include(item['model'], item['x'], item['y'], item['z'], 0, 0, 0)
 
-# ── KORIDOR SONU ARUCO MARKERLARI (zeminde, her koridorun 2 ucunda) ──
-# 8 konum, 8 BENZERSIZ ID - boylece drone hangi ID'yi gorurse konumunu KESIN bilir
+# --- ARUCO FLOOR MARKERS, one at each end of each aisle ---
+# Eight positions, eight UNIQUE ids, so a sighting is unambiguous
 corridor_x_centers = [-8.5, -3.9, 0.7, 5.3]
 marker_id = 1
-marker_map = {}   # {aruco_id: {"x":..., "y":...}} - drift duzeltmesi icin harita
+marker_map = {}   # {aruco_id: {"x":..., "y":...}} used for drift correction
 for cxc in corridor_x_centers:
     for y_end in [-8.0, 8.0]:
         marker_model = f"corridor_marker_{marker_id}"
@@ -45,12 +45,12 @@ for cxc in corridor_x_centers:
         marker_map[str(marker_id)] = {"x": cxc, "y": y_end}
         marker_id += 1
 
-# Marker haritasini kaydet - drift duzeltmesi bu dosyayi kullanacak
+# Write the marker map for the flight code to consult
 import json as _json
 _map_path = os.path.expanduser('~/autonomous_landing/marker_map.json')
 with open(_map_path, 'w') as _f:
     _json.dump(marker_map, _f, indent=2)
-print(f"Marker haritasi kaydedildi: {_map_path}")
+print(f"Marker map written to {_map_path}")
 
 includes_str = '\n'.join(includes)
 
@@ -125,5 +125,5 @@ path = os.path.join(WORLDS, 'warehouse_v2.sdf')
 with open(path, 'w') as f:
     f.write(world_content)
 
-print(f"warehouse_v2.sdf olusturuldu!")
-print(f"3 ada, 54 kutu, 8 koridor-sonu marker")
+print("warehouse_v2.sdf generated")
+print("3 islands, 54 boxes, 8 aisle-end markers")

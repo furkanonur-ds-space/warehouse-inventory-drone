@@ -2,12 +2,12 @@ import os
 
 GZ_MODELS = os.path.expanduser('~/PX4-Autopilot/Tools/simulation/gz/models')
 
-ISLAND_DEPTH = 1.6    # X ekseni (ince taraf)
-ISLAND_LENGTH = 12.0  # Y ekseni (uzun taraf, kutularin dizildigi yon)
+ISLAND_DEPTH = 1.6    # X axis, the thin side
+ISLAND_LENGTH = 12.0  # Y axis, the long side
 ISLAND_HEIGHT = 2.0
 LEG_SIZE = 0.08
 PLATE_THICKNESS = 0.04
-LEVELS_Z = [0.35, 1.0, 1.65]  # plaka yukseklikleri
+LEVELS_Z = [0.35, 1.0, 1.65]  # shelf plate heights
 
 islands_x = [-6.2, -1.6, 3.0]
 
@@ -30,7 +30,7 @@ for idx, cx in enumerate(islands_x):
         f.write(config)
 
     links = []
-    # Ayaklar
+    # Legs
     for ly in leg_y_positions:
         for lx in leg_x_offsets:
             links.append(f'''
@@ -44,7 +44,7 @@ for idx, cx in enumerate(islands_x):
         <geometry><box><size>{LEG_SIZE} {LEG_SIZE} {ISLAND_HEIGHT}</size></box></geometry>
       </collision>''')
 
-    # Yatay plakalar (3 seviye)
+    # Horizontal shelf plates (3 levels)
     for z in LEVELS_Z:
         links.append(f'''
       <visual name="plate_{z}_visual">
@@ -71,6 +71,6 @@ for idx, cx in enumerate(islands_x):
     with open(os.path.join(model_dir, 'model.sdf'), 'w') as f:
         f.write(sdf)
 
-    print(f"Guncellendi: {model_name} (ayakli/raf gorunumu)")
+    print(f"Generated: {model_name} (legs and shelf plates)")
 
-print("\n3 ada RAF GORUNUMUNE cevrildi!")
+print("\n3 shelf island models generated")

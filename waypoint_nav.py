@@ -1,12 +1,14 @@
 """
-ADIM 2: Waypoint tabanli navigasyon testi (kamera/tarama YOK, sadece hareket).
-Depo krokisi onceden bilindigi icin sabit bir rota izliyoruz.
+Waypoint navigation test. No camera processing, motion only.
 
-Rota deseni (boustrophedon / zigzag):
-  Koridor 1, seviye 1: guneyden kuzeye
-  Koridor 1, seviye 2: kuzeyden guneye
-  Koridor 1, seviye 3: guneyden kuzeye
-  Koridor 2'ye gec, seviye 3'ten basla (asagi dogru)
+Because the warehouse floor plan is known in advance, the route is fixed
+rather than discovered during flight.
+
+Route pattern (boustrophedon / zigzag):
+  Corridor 1, level 1: south to north
+  Corridor 1, level 2: north to south
+  Corridor 1, level 3: south to north
+  Corridor 2, level 3: north to south
   ...
 """
 import os
@@ -17,32 +19,32 @@ import math
 from mavsdk import System
 from mavsdk.offboard import PositionNedYaw, OffboardError
 
-# ─── DEPO KROKISI (onceden bilinen) ─────────────────────────
-CORRIDOR_X = [-8.5, -3.9, 0.7, 6.9]     # koridor merkezleri
-FLIGHT_Z = [0.5, 1.15, 1.8]              # ucus irtifalari (raf seviyelerinin biraz ustu)
-Y_SOUTH, Y_NORTH = -8.0, 8.0             # koridor uclari (duvara biraz mesafe birakiyoruz)
+# --- WAREHOUSE FLOOR PLAN (known in advance) ---
+CORRIDOR_X = [-8.5, -3.9, 0.7, 6.9]     # aisle centre lines
+FLIGHT_Z = [0.5, 1.15, 1.8]              # flight altitudes, just above each shelf
+Y_SOUTH, Y_NORTH = -8.0, 8.0             # aisle end points, clear of the walls
 
-# Test icin sadece ilk 2 koridoru tarayalim (sure kisa olsun)
+# Only the first two aisles are flown, to keep the test short
 CORRIDORS_TO_SCAN = 2
 
-WAYPOINT_TOLERANCE = 0.4   # metre - bu mesafeye girince "vardim" say
-TIMEOUT_PER_WP = 40         # saniye - bir waypoint icin maksimum sure
+WAYPOINT_TOLERANCE = 0.4   # metres, waypoint counts as reached below this
+TIMEOUT_PER_WP = 40         # seconds, maximum time allowed per waypoint
 
 
 def build_route():
-    """Boustrophedon rota olusturur: (x, y, z, yaw) listesi"""
+    """Build the boustrophedon route as a list of (x, y, z, yaw) tuples."""
     route = []
     going_north = True
 
     for c_idx in range(CORRIDORS_TO_SCAN):
         x = CORRIDOR_X[c_idx]
-        # Seviye sirasi: ilk koridorda alttan uste, ikincide ustten alta...
+        # Level order alternates so no empty return leg is needed
         levels = FLIGHT_Z if c_idx % 2 == 0 else list(reversed(FLIGHT_Z))
 
         for z in levels:
             if going_north:
-                route.append((x, Y_SOUTH, z, 0.0))   # baslangic noktasi
-                route.append((x, Y_NORTH, z, 0.0))   # koridoru gec
+                route.append((x, Y_SOUTH, z, 0.0))   # start of the aisle
+                route.append((x, Y_NORTH, z, 0.0))   # far end of the aisle
             else:
                 route.append((x, Y_NORTH, z, 0.0))
                 route.append((x, Y_SOUTH, z, 0.0))
@@ -51,7 +53,7 @@ def build_route():
     return route
 
 
-# ─── DURUM ──────────────────────────────────────────────────
+# --- STATE ---
 current_pos = {"n": 0.0, "e": 0.0, "d": 0.0}
 
 
@@ -75,22 +77,23 @@ def distance_to(target_n, target_e, target_d):
 
 async def goto_waypoint(drone, wp_idx, total, x, y, z, yaw):
     """
-    Waypoint'e git. NOT: PX4 NED koordinat sistemi kullaniyor:
-      North = Gazebo X, East = Gazebo Y, Down = -Gazebo Z
-    Ama drone spawn noktasi NED origin oldugu icin, spawn'a gore RELATIF hesapliyoruz.
+    Fly to a waypoint.
+
+    PX4 works in NED, which is related to the Gazebo world frame by an axis
+    swap, an origin shift to the spawn point, and a sign flip on the vertical
+    axis. All three conversions happen below.
     """
-    # Gazebo dunya koordinatlarini, spawn noktasina gore NED'e cevir
-    # Spawn: x=-8.5, y=-9, yaw=90deg  -> bu noktayi origin kabul ediyoruz
+    # Convert Gazebo world coordinates into NED relative to the spawn point
     SPAWN_X, SPAWN_Y = -8.5, -9.0
 
-    # Drone yaw=90 derece ile spawn oldugu icin, Gazebo X ekseni -> NED East'e,
-    # Gazebo Y ekseni -> NED North'a denk geliyor
+    # The vehicle spawns with 90 degrees of yaw, so Gazebo X maps to NED East
+    # and Gazebo Y maps to NED North
     target_n = y - SPAWN_Y
     target_e = x - SPAWN_X
-    target_d = -z    # NED'de asagi pozitif, yukseklik negatif
+    target_d = -z    # NED counts down as positive, so altitude is negated
 
-    print(f"\n[WP {wp_idx}/{total}] Hedef: Gazebo(x={x:.1f}, y={y:.1f}, z={z:.2f})")
-    print(f"           NED karsiligi: N={target_n:.2f} E={target_e:.2f} D={target_d:.2f}")
+    print(f"\n[WP {wp_idx}/{total}] target Gazebo(x={x:.1f}, y={y:.1f}, z={z:.2f})")
+    print(f"           NED equivalent: N={target_n:.2f} E={target_e:.2f} D={target_d:.2f}")
 
     elapsed = 0.0
     step = 0.2
@@ -100,58 +103,58 @@ async def goto_waypoint(drone, wp_idx, total, x, y, z, yaw):
 
         dist = distance_to(target_n, target_e, target_d)
         if dist < WAYPOINT_TOLERANCE:
-            print(f"           ✓ VARDI (hata: {dist:.2f}m, sure: {elapsed:.1f}s)")
+            print(f"           reached (error {dist:.2f} m, {elapsed:.1f} s)")
             return True
 
-        if int(elapsed * 5) % 25 == 0:  # her 5 saniyede bir durum
-            print(f"           ... mesafe: {dist:.2f}m  konum: N={current_pos['n']:.2f} E={current_pos['e']:.2f} D={current_pos['d']:.2f}")
+        if int(elapsed * 5) % 25 == 0:  # status line roughly every 5 s
+            print(f"           distance {dist:.2f} m  position N={current_pos['n']:.2f} E={current_pos['e']:.2f} D={current_pos['d']:.2f}")
 
         await asyncio.sleep(step)
         elapsed += step
 
-    print(f"           ✗ ZAMAN ASIMI (kalan mesafe: {distance_to(target_n, target_e, target_d):.2f}m)")
+    print(f"           timeout, remaining {distance_to(target_n, target_e, target_d):.2f} m")
     return False
 
 
 async def run():
     route = build_route()
     print("="*60)
-    print(f"  WAYPOINT NAVIGASYON TESTI")
-    print(f"  Toplam waypoint: {len(route)}")
-    print(f"  Taranacak koridor: {CORRIDORS_TO_SCAN}")
+    print("  WAYPOINT NAVIGATION TEST")
+    print(f"  Waypoints:        {len(route)}")
+    print(f"  Corridors:        {CORRIDORS_TO_SCAN}")
     print("="*60)
 
     drone = System()
     await drone.connect(system_address="udp://:14540")
-    print("\n[BILGI] Baglaniliyor...")
+    print("\n[INFO] Connecting")
     async for state in drone.core.connection_state():
         if state.is_connected:
             break
 
     asyncio.create_task(track_position(drone))
 
-    print("[BILGI] Sensorler bekleniyor...")
+    print("[INFO] Waiting for position estimate")
     async for h in drone.telemetry.health():
         if h.is_local_position_ok and h.is_home_position_ok:
             break
-    print("[BILGI] Sensorler hazir.")
+    print("[INFO] Position estimate valid")
 
-    print("[BILGI] Arm ve kalkis...")
+    print("[INFO] Arming and taking off")
     await drone.action.arm()
     await drone.action.takeoff()
     await asyncio.sleep(8)
 
-    print("[BILGI] Offboard moda geciliyor...")
+    print("[INFO] Entering offboard mode")
     await drone.offboard.set_position_ned(
         PositionNedYaw(current_pos["n"], current_pos["e"], current_pos["d"], 0.0))
     try:
         await drone.offboard.start()
     except OffboardError as e:
-        print(f"[HATA] Offboard: {e}")
+        print(f"[ERROR] Offboard rejected: {e}")
         await drone.action.land()
         return
 
-    print("\n[BILGI] Rota takibi basliyor...\n")
+    print("\n[INFO] Starting route\n")
     success_count = 0
     for i, (x, y, z, yaw) in enumerate(route, 1):
         ok = await goto_waypoint(drone, i, len(route), x, y, z, yaw)
@@ -159,11 +162,11 @@ async def run():
             success_count += 1
 
     print("\n" + "="*60)
-    print(f"  ROTA TAMAMLANDI")
-    print(f"  Basarili waypoint: {success_count}/{len(route)}")
+    print("  ROUTE COMPLETE")
+    print(f"  Waypoints reached: {success_count}/{len(route)}")
     print("="*60)
 
-    print("\n[BILGI] Iniliyor...")
+    print("\n[INFO] Landing")
     await drone.offboard.stop()
     await drone.action.land()
 

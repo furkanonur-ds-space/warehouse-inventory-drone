@@ -1,6 +1,6 @@
 """
-TEMEL UCUS TESTI: Optical flow (GPS'siz) ile drone kalkip stabil durabiliyor mu?
-Bu, sonraki adimlarin (waypoint navigasyon) uzerine insa edilecegi temel.
+Basic flight test: can the vehicle take off and hold position using optical
+flow alone, with GPS disabled? This is the foundation everything else builds on.
 """
 import os
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
@@ -14,14 +14,14 @@ async def run():
     drone = System()
     await drone.connect(system_address="udp://:14540")
 
-    print("[BILGI] Baglaniliyor...")
+    print("[INFO] Connecting")
     async for state in drone.core.connection_state():
         if state.is_connected:
             break
-    print("[BILGI] Baglanti kuruldu.")
+    print("[INFO] Connected")
 
-    # Saglik durumunu izle - ozellikle local_position_ok (optical flow'a bagli)
-    print("[BILGI] Sensor sagligi bekleniyor (optical flow / EKF2 stabilize olmali)...")
+    # Watch health flags, especially local_position_ok which depends on flow
+    print("[INFO] Waiting for sensor health (optical flow and EKF2 must settle)")
     sensors_ready = False
     timeout_counter = 0
     async for h in drone.telemetry.health():
@@ -32,23 +32,23 @@ async def run():
             sensors_ready = True
             break
         timeout_counter += 1
-        if timeout_counter > 60:  # ~30 saniye (health stream ~0.5s araliklarla gelir)
-            print("[UYARI] 30 saniyede sensor hazir olmadi, yine de devam edilecek")
+        if timeout_counter > 60:  # roughly 30 s at ~0.5 s per health update
+            print("[WARN] Sensors not ready after 30 s, continuing anyway")
             break
 
-    print(f"\n[BILGI] Sensor durumu: {'HAZIR' if sensors_ready else 'HAZIR DEGIL (riskli devam)'}")
+    print(f"\n[INFO] Sensor status: {'READY' if sensors_ready else 'NOT READY (proceeding anyway)'}")
 
-    print("[BILGI] Motorlar calistiriliyor...")
+    print("[INFO] Arming")
     try:
         await drone.action.arm()
     except Exception as e:
-        print(f"[HATA] Arm basarisiz: {e}")
+        print(f"[ERROR] Arming failed: {e}")
         return
 
-    print("[BILGI] Kalkis...")
+    print("[INFO] Taking off")
     await drone.action.takeoff()
 
-    print("[BILGI] 15 saniye boyunca irtifa ve konum izleniyor (stabil mi?)...")
+    print("[INFO] Monitoring altitude and velocity for 15 s")
     for i in range(15):
         async for pos in drone.telemetry.position():
             alt = pos.relative_altitude_m
@@ -57,19 +57,19 @@ async def run():
             vx = odom.velocity.north_m_s
             vy = odom.velocity.east_m_s
             break
-        print(f"  t={i}s  irtifa={alt:.2f}m  hiz_north={vx:.2f}  hiz_east={vy:.2f}")
+        print(f"  t={i}s  altitude={alt:.2f} m  v_north={vx:.2f}  v_east={vy:.2f}")
         await asyncio.sleep(1)
 
-    print("\n[BILGI] Offboard moda geciliyor (sabit durma testi)...")
+    print("\n[INFO] Entering offboard mode for position-hold test")
     await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
     try:
         await drone.offboard.start()
     except OffboardError as e:
-        print(f"[HATA] Offboard baslatilamadi: {e}")
+        print(f"[ERROR] Offboard rejected: {e}")
         await drone.action.land()
         return
 
-    print("[BILGI] 10 saniye sabit durma (drift olcumu)...")
+    print("[INFO] Holding position for 10 s to measure drift")
     positions = []
     for i in range(20):
         async for odom in drone.telemetry.position_velocity_ned():
@@ -81,11 +81,11 @@ async def run():
         start_n, start_e = positions[0]
         end_n, end_e = positions[-1]
         drift = ((end_n - start_n)**2 + (end_e - start_e)**2) ** 0.5
-        print(f"\n[SONUC] 10 saniyede toplam drift: {drift:.3f} metre")
-        print(f"  Baslangic: N={start_n:.2f} E={start_e:.2f}")
-        print(f"  Bitis:     N={end_n:.2f} E={end_e:.2f}")
+        print(f"\n[RESULT] Total drift over 10 s: {drift:.3f} m")
+        print(f"  Start: N={start_n:.2f} E={start_e:.2f}")
+        print(f"  End:   N={end_n:.2f} E={end_e:.2f}")
 
-    print("\n[BILGI] Test tamamlandi, iniliyor...")
+    print("\n[INFO] Test complete, landing")
     await drone.offboard.stop()
     await drone.action.land()
 

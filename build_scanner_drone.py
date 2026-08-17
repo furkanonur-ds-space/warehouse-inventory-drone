@@ -14,7 +14,7 @@ config = f'''<?xml version="1.0"?>
 with open(os.path.join(model_dir, 'model.config'), 'w') as f:
     f.write(config)
 
-# Kamera sensor bloğu - tekrar kullanmak icin fonksiyon
+# Camera sensor block, factored into a function to avoid duplication
 def camera_block(link_name, joint_name, y_offset, yaw):
     return f'''
     <joint name="{joint_name}" type="fixed">
@@ -64,7 +64,7 @@ sdf = f'''<?xml version="1.0" encoding="UTF-8"?>
 with open(os.path.join(model_dir, 'model.sdf'), 'w') as f:
     f.write(sdf)
 
-print(f"{model_name} modeli hazir!")
-print("- x500_flow tabanli (optical flow + LW20 mesafe sensoru)")
-print("- SOL kamera eklendi (yaw=+90, sola bakiyor)")
-print("- SAG kamera eklendi (yaw=-90, saga bakiyor)")
+print(f"{model_name} model generated")
+print("- based on x500 (includes optical flow and range sensor)")
+print("- left camera added (yaw +90 degrees)")
+print("- right camera added (yaw -90 degrees)")

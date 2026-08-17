@@ -17,9 +17,9 @@ for island_i, cx in enumerate(islands_x):
         # Kutu, plakanin USTUNE oturur
         box_center_z = plate_z + PLATE_THICKNESS/2 + BOX_SIZE/2
         for y in box_y_positions:
-            for face in ['sol', 'sag']:
+            for face in ['left', 'right']:
                 box_counter += 1
-                box_id = f"KUTU-A{island_i+1}-K{level_i+1}-{face.upper()}-{box_counter:03d}"
+                box_id = f"BOX-I{island_i+1}-L{level_i+1}-{face.upper()}-{box_counter:03d}"
 
                 model_name = f"invbox_{box_counter:03d}"
                 model_dir = os.path.join(GZ_MODELS, model_name)
@@ -29,8 +29,8 @@ for island_i, cx in enumerate(islands_x):
                 qr.add_data(box_id)
                 qr.make(fit=True)
                 img = qr.make_image(fill_color='black', back_color='white').convert('RGB').resize((300, 300))
-                # BENZERSIZ dosya adi sart! Ayni isimli texture'lari Gazebo
-                # onbellekte cakistirip hepsine ayni goruntuyu uyguluyor.
+                # Unique filename is essential. Gazebo caches textures by filename,
+                # so identical names collide and every box shows the same code.
                 qr_filename = f'qr_{box_counter:03d}.png'
                 qr_path = os.path.join(model_dir, qr_filename)
                 img.save(qr_path)
@@ -44,10 +44,10 @@ for island_i, cx in enumerate(islands_x):
                 with open(os.path.join(model_dir, 'model.config'), 'w') as f:
                     f.write(config)
 
-                # QR, kutunun DISA BAKAN yuzune (yerel X ekseninde) monte edilir
-                # sol -> yerel -X yuzu, normal -X'e baksin (pitch=-90)
-                # sag -> yerel +X yuzu, normal +X'e baksin (pitch=+90)
-                if face == 'sol':
+                # The QR plane is mounted on the outward-facing side of the box
+                # left  -> local -X face, normal points -X (pitch -90)
+                # right -> local +X face, normal points +X (pitch +90)
+                if face == 'left':
                     qr_local_x = -BOX_SIZE/2 - 0.002
                     pitch = -1.5708
                 else:
@@ -85,7 +85,7 @@ for island_i, cx in enumerate(islands_x):
 
                 # Kutu, plakanin ust yuzeyinde, disa bakan kenara YAKIN dursun
                 box_edge_offset = ISLAND_DEPTH/2 - BOX_SIZE/2 - 0.02
-                x_offset = -box_edge_offset if face == 'sol' else box_edge_offset
+                x_offset = -box_edge_offset if face == 'left' else box_edge_offset
                 world_x = cx + x_offset
 
                 inventory.append({
@@ -94,9 +94,9 @@ for island_i, cx in enumerate(islands_x):
                     "face": face, "island": island_i+1, "level": level_i+1
                 })
 
-print(f"Toplam {box_counter} kutu (govde+QR birlesik) modeli uretildi!")
+print(f"Generated {box_counter} box models (body + QR combined)")
 
 with open(os.path.expanduser('~/autonomous_landing/inventory_ground_truth.json'), 'w') as f:
     json.dump(inventory, f, indent=2, ensure_ascii=False)
 
-print("Envanter listesi guncellendi (yeni Z konumlariyla).")
+print("Ground-truth inventory written")
