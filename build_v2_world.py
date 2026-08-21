@@ -21,11 +21,11 @@ def add_include(model_type, x, y, z, roll=0, pitch=0, yaw=0):
 # --- OUTER WALLS (20x20 m enclosure) ---
 add_include('warehouse_wall', 0, 10, 2, 0, 0, 0)
 add_include('warehouse_wall', 0, -10, 2, 0, 0, 0)
-add_include('warehouse_wall', 10, 0, 2, 0, 0, 1.5708)
-add_include('warehouse_wall', -10, 0, 2, 0, 0, 1.5708)
+add_include('warehouse_wall', 7.2, 0, 2, 0, 0, 1.5708)
+add_include('warehouse_wall', -7.2, 0, 2, 0, 0, 1.5708)
 
 # --- THREE SHELF ISLANDS ---
-islands_x = [-6.2, -1.6, 3.0]
+islands_x = [-4.0, 0.0, 4.0]
 for i, cx in enumerate(islands_x):
     add_include(f'island_{i+1}', cx, 0, 0, 0, 0, 0)
 
@@ -35,7 +35,7 @@ for item in inventory:
 
 # --- ARUCO FLOOR MARKERS, one at each end of each aisle ---
 # Eight positions, eight UNIQUE ids, so a sighting is unambiguous
-corridor_x_centers = [-8.5, -3.9, 0.7, 5.3]
+corridor_x_centers = [-6.0, -2.0, 2.0, 6.0]
 marker_id = 1
 marker_map = {}   # {aruco_id: {"x":..., "y":...}} used for drift correction
 for cxc in corridor_x_centers:

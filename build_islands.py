@@ -9,7 +9,7 @@ LEG_SIZE = 0.08
 PLATE_THICKNESS = 0.04
 LEVELS_Z = [0.35, 1.0, 1.65]  # shelf plate heights
 
-islands_x = [-6.2, -1.6, 3.0]
+islands_x = [-4.0, 0.0, 4.0]   # 2.4 m aisles between and either side
 
 # Ayaklar: X'te 2 kenar (-depth/2, +depth/2), Y'de her 3m'de bir
 leg_y_positions = [-6, -2, 2, 6]

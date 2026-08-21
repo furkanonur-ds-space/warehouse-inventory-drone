@@ -3,10 +3,11 @@ import os, qrcode, json
 GZ_MODELS = os.path.expanduser('~/PX4-Autopilot/Tools/simulation/gz/models')
 
 BOX_SIZE = 0.3
+QR_PRINT_SIZE = 0.14   # matches the label size used on the reference warehouse
 PLATE_THICKNESS = 0.04
 LEVELS_Z = [0.35, 1.0, 1.65]   # plaka MERKEZ yukseklikleri
 ISLAND_DEPTH = 1.6
-islands_x = [-6.2, -1.6, 3.0]
+islands_x = [-4.0, 0.0, 4.0]
 box_y_positions = [-4.0, 0.0, 4.0]
 
 inventory = []
@@ -71,7 +72,7 @@ for island_i, cx in enumerate(islands_x):
       </collision>
       <visual name="qr_visual">
         <pose>{qr_local_x} 0 0 0 {pitch} 0</pose>
-        <geometry><plane><normal>0 0 1</normal><size>{BOX_SIZE*0.85} {BOX_SIZE*0.85}</size></plane></geometry>
+        <geometry><plane><normal>0 0 1</normal><size>{QR_PRINT_SIZE} {QR_PRINT_SIZE}</size></plane></geometry>
         <material>
           <diffuse>1 1 1 1</diffuse>
           <pbr><metal><albedo_map>model://{model_name}/{qr_filename}</albedo_map></metal></pbr>

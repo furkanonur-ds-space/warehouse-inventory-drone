@@ -33,10 +33,21 @@ import gz.transport13 as trans
 from gz.msgs10.pose_v_pb2 import Pose_V
 
 # --- WAREHOUSE FLOOR PLAN (must match warehouse_scanner.py) ---
-CORRIDOR_X = [-8.5, -3.9, 0.7, 5.3]
+CORRIDOR_X = [-6.0, -2.0, 2.0, 6.0]
 FLIGHT_Z = [0.5, 1.15, 1.8]
 Y_SOUTH, Y_NORTH = -8.0, 8.0
-SPAWN_X, SPAWN_Y = -8.5, -9.0
+SPAWN_X, SPAWN_Y = -6.0, -9.0
+
+# Heading is held at +90 degrees throughout.
+#
+# The vehicle spawns with a yaw of 1.5708 rad so that it faces north, along the
+# aisle, which puts the side cameras perpendicular to the shelf faces. Sending
+# a yaw setpoint of 0 makes it rotate, after which the side cameras look along
+# the aisle instead of at the shelf, and nothing decodes. This was diagnosed
+# from saved frames: aisle 1 showed a shelf face square-on, aisle 2 showed the
+# shelf receding into perspective.
+FLIGHT_YAW_DEG = 90.0
+
 
 CRUISE_SPEED = 0.7
 WAYPOINT_TOLERANCE = 0.4
@@ -166,7 +177,7 @@ async def goto_waypoint(drone, index, total, x, y, z):
             start_n + (target_n - start_n) * fraction,
             start_e + (target_e - start_e) * fraction,
             start_d + (target_d - start_d) * fraction,
-            0.0))
+            FLIGHT_YAW_DEG))
 
         if (travelled >= leg_length
                 and distance_to(target_n, target_e, target_d) < WAYPOINT_TOLERANCE):
@@ -299,7 +310,7 @@ async def run(hover_seconds):
     await asyncio.sleep(8)
 
     await drone.offboard.set_position_ned(PositionNedYaw(
-        current_pos["n"], current_pos["e"], current_pos["d"], 0.0))
+        current_pos["n"], current_pos["e"], current_pos["d"], FLIGHT_YAW_DEG))
     try:
         await drone.offboard.start()
     except OffboardError as error:
@@ -316,7 +327,7 @@ async def run(hover_seconds):
         deadline = time.time() + hover_seconds
         while time.time() < deadline:
             await drone.offboard.set_position_ned(
-                PositionNedYaw(hold[0], hold[1], hold[2], 0.0))
+                PositionNedYaw(hold[0], hold[1], hold[2], FLIGHT_YAW_DEG))
             await asyncio.sleep(0.1)
         reached = total = 0
     else:
