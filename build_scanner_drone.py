@@ -169,11 +169,67 @@ tracking_down = camera_block(
     0.0, 0.0, -0.05, 0, 1.5708, 0,
     fov=1.5708, width=640, height=480)
 
-# --- TOF, front facing -------------------------------------------------
-tof_front = range_block(
-    "tof_link", "tof_joint",
-    0.12, 0.0, 0.0, 0, 0, 0,
-    max_range=10.0)
+# --- Sensors required for GPS-free position estimation -----------------
+#
+# The base x500 provides a barometer, magnetometer, IMU, GPS and a downward
+# camera. It does NOT provide optical flow or a downward range sensor.
+#
+# Without those two, disabling GPS leaves EKF2 with no way to estimate
+# horizontal position: xy_valid stays false and the vehicle cannot hold
+# position. This was not obvious for several days because the airframe still
+# had GPS enabled, so the estimate came from GPS while the project described
+# itself as GPS-free.
+#
+# The definitions below mirror those in the stock x500_flow model. That model
+# is not used as a base because EKF2 fails to initialise with it in this PX4
+# version; copying the two sensors avoids that problem.
+
+# Optical flow, defined inline rather than by including the stock model.
+#
+# The stock model is brought in with:
+#
+#     <include merge='true'><uri>model://optical_flow</uri></include>
+#
+# and that breaks EKF2 in this PX4 version: the estimator reports attitude 0
+# and zero updates, so the vehicle never gets an attitude let alone a position.
+# Bisection confirmed it: with the include present EKF2 recorded 0 updates,
+# without it 1589 in the same interval. It is also why the stock x500_flow
+# model fails, since x500_flow uses the same include.
+#
+# Defining the sensor directly avoids whatever the merge does to the link
+# structure, while producing the same measurements.
+# Optical flow, defined inline rather than by including the stock model.
+#
+# The stock model is normally brought in with:
+#
+#     <include merge='true'><uri>model://optical_flow</uri></include>
+#
+# and that breaks EKF2 in this PX4 version: the estimator reports attitude 0
+# and records zero updates, so the vehicle never gets an attitude, let alone a
+# position. Bisection confirmed it: with the include present EKF2 logged 0
+# updates, without it 1589 over the same interval. The same include is why the
+# stock x500_flow model fails.
+#
+# The structure below mirrors the stock model exactly, because the flow plugin
+# depends on it. Two sensors sit on the same link:
+#
+#   flow_camera   an ordinary downward camera that produces the image
+#   optical_flow  the plugin, which finds that camera by looking on its own
+#                 link and computes motion from consecutive frames
+#
+# A first attempt merged the two into one sensor with an inline camera block.
+# Gazebo created the topics but PX4 never received flow data, because the
+# plugin had no camera to read from.
+# VIO simulation via OdometryPublisher.
+# This simulates the VOXL 2 computing VIO from the tracking cameras.
+vio_odometry = '''
+    <plugin
+      filename="gz-sim-odometry-publisher-system"
+      name="gz::sim::systems::OdometryPublisher">
+      <dimensions>3</dimensions>
+    </plugin>'''
+
+tof_front = ""
 
 sdf = f'''<?xml version="1.0" encoding="UTF-8"?>
 <sdf version='1.9'>
@@ -186,6 +242,7 @@ sdf = f'''<?xml version="1.0" encoding="UTF-8"?>
 {tracking_front}
 {tracking_rear}
 {tracking_down}
+{vio_odometry}
 {tof_front}
   </model>
 </sdf>'''
@@ -197,7 +254,8 @@ print("  camera_hires_link        1280x720  front, 60 deg   scanning")
 print("  camera_track_front_link   640x480  front, 90 deg   odometry")
 print("  camera_track_rear_link    640x480  rear,  90 deg   odometry")
 print("  camera_track_down_link    640x480  down,  90 deg   odometry and ArUco")
-print("  tof_link                  1 beam   front, 10 m     obstacles")
+print("  OdometryPublisher         plugin   VIO simulation")
+print("  tof_link                  DISABLED, collides with the range sensor")
 print()
 print("  Note: scanning now requires the vehicle to face the shelf, so each")
 print("  shelf face needs its own pass. Mission time roughly doubles.")

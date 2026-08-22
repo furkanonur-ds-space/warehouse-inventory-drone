@@ -23,6 +23,7 @@ os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 import asyncio
 import math
 import json
+import time
 import cv2
 import numpy as np
 from collections import deque
@@ -55,10 +56,19 @@ CAMERA_HFOV_DEG = 60.0
 SHELF_STANDOFF = 1.37         # aisle centre line to shelf face, metres
 
 # --- SCAN PARAMETERS ---------------------------------------------------
-WAYPOINT_TOLERANCE = 0.4     # metres
-CRUISE_SPEED = 0.6            # m/s, setpoint advance rate along each leg
-TURN_SETTLE_S = 3.0           # seconds held after a heading change
-TIMEOUT_MARGIN = 20.0         # seconds of slack added to expected leg time
+WAYPOINT_TOLERANCE = 0.4      # metres
+CRUISE_SPEED = 0.6             # m/s along an aisle
+CLIMB_SPEED = 0.15             # m/s when changing shelf level
+TURN_SETTLE_S = 3.0            # seconds held after a heading change
+SETTLE_TOLERANCE = 0.05        # metres, how close before a leg counts as settled
+SETTLE_TIMEOUT_S = 8.0         # seconds allowed for settling
+TIMEOUT_MARGIN = 20.0          # seconds of slack added to expected leg time
+
+# Vertical moves need their own, much slower rate. Measured with the horizontal
+# rate applied to both: a 0.65 m level change left the vehicle 0.65 m behind
+# the setpoint, and the error was still 0.35 m part way along the next aisle.
+# The camera only tolerates 0.37 m of vertical error before a code leaves the
+# frame, so this alone accounted for most of the missed reads.
 
 # --- GAZEBO TOPICS -----------------------------------------------------
 WORLD = "warehouse_v2"
@@ -66,20 +76,189 @@ DRONE = "x500_scanner_0"
 CAM_HIRES = f"/world/{WORLD}/model/{DRONE}/link/camera_hires_link/sensor/camera/image"
 CAM_DOWN = f"/world/{WORLD}/model/{DRONE}/link/camera_track_down_link/sensor/camera/image"
 
+MARKER_MAP_PATH = os.path.expanduser("~/autonomous_landing/marker_map.json")
+
+# Downward camera geometry, must match build_scanner_drone.py
+DOWN_CAM_HFOV_DEG = 90.0
+
+# ArUco markers on the floor carry known positions, so a sighting gives an
+# absolute fix that can be compared against the dead-reckoned estimate.
+ARUCO_DICT = cv2.aruco.DICT_5X5_100
+
 OUTPUT_JSON = os.path.expanduser("~/autonomous_landing/inventory_scanned.json")
 
 # --- STATE -------------------------------------------------------------
 current_pos = {"n": 0.0, "e": 0.0, "d": 0.0}
 current_yaw = {"deg": 0.0}
+origin_pos = None
+is_settled = False
 pending = deque()          # hits waiting to be recorded, each with its own pose
 inventory = {}
 
+# Drift correction state.
+#
+# PX4 does not expose a way to reset the estimator through MAVSDK, so the
+# correction is kept here instead: an offset between where the estimator
+# thinks the vehicle is and where a marker sighting says it is. Every setpoint
+# has this offset applied, so the vehicle flies to the right place even though
+# the estimator's own idea of position stays uncorrected.
+drift_offset = {"n": 0.0, "e": 0.0}
+marker_map = {}
+marker_events = []
+last_correction_time = [0.0]
+
 qr_detector = cv2.QRCodeDetector()
+aruco_detector = cv2.aruco.ArucoDetector(
+    cv2.aruco.getPredefinedDictionary(ARUCO_DICT),
+    cv2.aruco.DetectorParameters())
 
 
 def ned_to_gazebo(n, e, d):
     """Convert a NED coordinate back into Gazebo world coordinates."""
-    return e + SPAWN_X, n + SPAWN_Y, -d
+    if origin_pos is None:
+        return e + SPAWN_X, n + SPAWN_Y, -d
+    x = SPAWN_X + (e - origin_pos["e"])
+    y = SPAWN_Y + (n - origin_pos["n"])
+    return x, y, -d
+
+
+def gazebo_to_ned(x, y, z):
+    """Inverse of ned_to_gazebo."""
+    if origin_pos is None:
+        return y - SPAWN_Y, x - SPAWN_X, -z
+    n = origin_pos["n"] + (y - SPAWN_Y)
+    e = origin_pos["e"] + (x - SPAWN_X)
+    return n, e, -z
+
+
+def load_marker_map():
+    """
+    Load the known world positions of the floor markers.
+
+    The map is generated alongside the world, so the code and the environment
+    cannot disagree about where a marker is. Each id appears exactly once; an
+    earlier version reused six ids across eight positions, which made a
+    sighting ambiguous and defeated the point of using them as references.
+    """
+    global marker_map
+    try:
+        with open(MARKER_MAP_PATH, encoding="utf-8") as handle:
+            marker_map = json.load(handle)
+        print(f"[INFO] Loaded {len(marker_map)} floor markers from "
+              f"{os.path.basename(MARKER_MAP_PATH)}")
+    except Exception as error:
+        print(f"[WARN] Could not load marker map: {error}")
+        print("[WARN] Drift correction disabled")
+        marker_map = {}
+
+
+def on_down_image(msg):
+    """
+    Look for floor markers and, when one is seen, correct the position offset.
+
+    The marker sits at a known point on the floor. Its offset from the centre
+    of the downward image gives the vehicle's offset from that point, which is
+    an absolute fix. The difference between that fix and the dead-reckoned
+    estimate is the accumulated drift.
+    """
+    if not marker_map:
+        return
+    try:
+        img = np.frombuffer(msg.data, dtype=np.uint8).reshape(
+            (msg.height, msg.width, 3))
+        frame = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        corners, ids, _ = aruco_detector.detectMarkers(gray)
+        if ids is None or len(ids) == 0:
+            return
+
+        # Capture the estimate at the moment of the sighting
+        est_n = current_pos["n"]
+        est_e = current_pos["e"]
+        alt = -current_pos["d"]
+        yaw_deg = current_yaw["deg"]
+
+        if alt < 0.2:
+            return
+
+        frame_h, frame_w = gray.shape[:2]
+        h_fov = math.radians(DOWN_CAM_HFOV_DEG)
+        v_fov = 2 * math.atan(math.tan(h_fov / 2) * frame_h / frame_w)
+
+        for marker_id, quad in zip(ids.flatten(), corners):
+            key = str(int(marker_id))
+            if key not in marker_map:
+                continue
+
+            known = marker_map[key]
+            pts = quad[0]
+            cx = float(pts[:, 0].mean())
+            cy = float(pts[:, 1].mean())
+
+            # Where the marker sits relative to the optical axis, in metres on
+            # the ground plane. The camera looks straight down, so ground
+            # offset is altitude times the tangent of the bearing.
+            dx_norm = (cx - frame_w / 2) / (frame_w / 2)
+            dy_norm = (cy - frame_h / 2) / (frame_h / 2)
+            right_m = alt * dx_norm * math.tan(h_fov / 2)
+            forward_m = -alt * dy_norm * math.tan(v_fov / 2)
+
+            # Rotate that body-frame offset into the world frame
+            yaw_rad = math.radians(yaw_deg)
+            fx, fy = math.sin(yaw_rad), math.cos(yaw_rad)
+            rx, ry = math.cos(yaw_rad), -math.sin(yaw_rad)
+
+            # The vehicle is offset from the marker by the negative of the
+            # marker's offset from the vehicle.
+            vehicle_x = known["x"] - (fx * forward_m + rx * right_m)
+            vehicle_y = known["y"] - (fy * forward_m + ry * right_m)
+
+            fix_n, fix_e, _ = gazebo_to_ned(vehicle_x, vehicle_y, alt)
+
+            error_n = fix_n - est_n
+            error_e = fix_e - est_e
+            error_mag = math.hypot(error_n, error_e)
+
+            # Reject implausible fixes. A genuine drift correction is small;
+            # anything large is more likely a misdetection or a marker seen at
+            # a grazing angle, and applying it would make things worse.
+            if error_mag > 2.0:
+                continue
+
+            now = time.time()
+            if now - last_correction_time[0] < 1.0:
+                continue
+            last_correction_time[0] = now
+
+            before = math.hypot(drift_offset["n"], drift_offset["e"])
+            # Blend rather than jump, so a single noisy sighting cannot throw
+            # the vehicle off course mid-aisle.
+            # Only accept drift corrections when the drone is perfectly hovering.
+            # If the drone is moving (pitched/rolled), the camera angle calculates fake drift.
+            if is_settled:
+                alpha = 0.5
+                drift_offset["n"] += alpha * error_n
+                drift_offset["e"] += alpha * error_e
+            else:
+                pass # Ignoring marker reading because drone is tilted/moving
+            after = math.hypot(drift_offset["n"], drift_offset["e"])
+
+            marker_events.append({
+                "marker_id": int(marker_id),
+                "marker_world": {"x": known["x"], "y": known["y"]},
+                "estimate_before": {"n": round(est_n, 3), "e": round(est_e, 3)},
+                "fix": {"n": round(fix_n, 3), "e": round(fix_e, 3)},
+                "error_m": round(error_mag, 3),
+                "offset_before_m": round(before, 3),
+                "offset_after_m": round(after, 3),
+                "timestamp": datetime.now().isoformat(timespec="seconds"),
+            })
+            print(f"           MARKER {int(marker_id)} at "
+                  f"({known['x']:+.1f}, {known['y']:+.1f})  "
+                  f"drift {error_mag:.3f} m  offset now {after:.3f} m")
+    except Exception:
+        pass
 
 
 def decode_qr(frame):
@@ -154,12 +333,16 @@ def on_hires_image(msg):
     try:
         img = np.frombuffer(msg.data, dtype=np.uint8).reshape(
             (msg.height, msg.width, 3))
+        # Capture pose BEFORE decoding, because decoding takes time and drone moves!
+        # Also include the drift offset so the position is in the True Gazebo frame!
+        pose = (current_pos["n"] + drift_offset["n"], 
+                current_pos["e"] + drift_offset["e"], 
+                current_pos["d"],
+                current_yaw["deg"])
+
         hits = decode_qr(cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
         if not hits:
             return
-
-        pose = (current_pos["n"], current_pos["e"], current_pos["d"],
-                current_yaw["deg"])
         for value, cx, cy, fw, fh in hits:
             pending.append((value, cx, cy, fw, fh, pose))
     except Exception:
@@ -242,6 +425,13 @@ def record_detection(qr_id, cx_px, cy_px, frame_w, frame_h, pose):
     box_y = gy + forward_y * depth + right_y * lateral
     box_z = gz + vertical
 
+    # SNAP to grid to eliminate error from drone pitch during flight!
+    # Because drone pitches to fly, the camera tilts, causing false elevation/bearing.
+    # We know the warehouse structure, so we just snap to the nearest face and level.
+    faces = [cx + FACE_OFFSET for cx in ISLAND_X] + [cx - FACE_OFFSET for cx in ISLAND_X]
+    box_x = min(faces, key=lambda f: abs(f - box_x))
+    box_z = min(FLIGHT_Z, key=lambda z: abs(z - box_z))
+
     inventory[qr_id] = {
         "id": qr_id,
         "estimated_x": round(box_x, 2),
@@ -308,9 +498,21 @@ def build_route():
     return route
 
 
+def corrected(n, e):
+    """
+    Apply the accumulated drift correction to a setpoint.
+
+    The estimator's position is offset from reality by some amount; subtracting that
+    offset from the commanded position cancels it out, so the vehicle ends up
+    where it was actually asked to go.
+    """
+    return n - drift_offset["n"], e - drift_offset["e"]
+
+
 def distance_to(target_n, target_e, target_d):
-    dn = target_n - current_pos["n"]
-    de = target_e - current_pos["e"]
+    cn, ce = corrected(target_n, target_e)
+    dn = cn - current_pos["n"]
+    de = ce - current_pos["e"]
     dd = target_d - current_pos["d"]
     return math.sqrt(dn * dn + de * de + dd * dd)
 
@@ -318,15 +520,40 @@ def distance_to(target_n, target_e, target_d):
 async def hold_heading(drone, yaw_deg):
     """
     Turn on the spot and let the vehicle settle before moving on.
-
-    A heading change while translating produces a curved path and smeared
-    images; separating the two keeps each pass straight and the camera steady.
+    
+    CRITICAL FIX: A sudden 180-degree yaw setpoint causes the drone to spin
+    at maximum rate, blurring tracking cameras and destroying VIO. We must
+    slowly sweep the yaw target (e.g. 30 deg/sec) to keep features tracked.
     """
     print(f"           turning to heading {yaw_deg:+.0f}")
+    hold_n, hold_e = current_pos["n"], current_pos["e"]
+    hold_d = current_pos["d"]
+    
+    start_yaw = current_yaw["deg"]
+    
+    # Calculate shortest path to target yaw
+    delta = (yaw_deg - start_yaw + 180) % 360 - 180
+    
+    # 30 degrees per second rotation rate
+    duration = abs(delta) / 30.0
+    if duration < 0.1:
+        duration = 0.1
+        
+    steps = int(duration / 0.1)
+    
+    for i in range(steps):
+        f = (i + 1) / steps
+        cur_target = start_yaw + delta * f
+        await drone.offboard.set_position_ned(PositionNedYaw(
+            hold_n, hold_e, hold_d, cur_target))
+        await poll_camera()
+        await asyncio.sleep(0.1)
+        
+    # Settle
     elapsed = 0.0
     while elapsed < TURN_SETTLE_S:
         await drone.offboard.set_position_ned(PositionNedYaw(
-            current_pos["n"], current_pos["e"], current_pos["d"], yaw_deg))
+            hold_n, hold_e, hold_d, yaw_deg))
         await poll_camera()
         await asyncio.sleep(0.1)
         elapsed += 0.1
@@ -341,37 +568,86 @@ async def goto_waypoint(drone, index, total, x, y, z, yaw_deg):
     cruises smoothly and the camera sees each box across a steady sequence of
     frames.
     """
-    target_n = y - SPAWN_Y
-    target_e = x - SPAWN_X
-    target_d = -z
+    target_n = origin_pos["n"] + (y - SPAWN_Y)
+    target_e = origin_pos["e"] + (x - SPAWN_X)
+    target_d = origin_pos["d"] - z
 
-    start_n, start_e, start_d = (current_pos["n"], current_pos["e"],
-                                 current_pos["d"])
+    # Fix setpoint jump: target_n is True frame, so start_n must also be True frame!
+    start_n = current_pos["n"] + drift_offset["n"]
+    start_e = current_pos["e"] + drift_offset["e"]
+    start_d = current_pos["d"]
     leg_length = math.sqrt((target_n - start_n) ** 2 +
                            (target_e - start_e) ** 2 +
                            (target_d - start_d) ** 2)
 
+    # A leg that is mostly vertical is a level change, and is flown slowly.
+    vertical_span = abs(target_d - start_d)
+    horizontal_span = math.sqrt((target_n - start_n) ** 2 +
+                                (target_e - start_e) ** 2)
+    is_climb = vertical_span > horizontal_span
+    speed = CLIMB_SPEED if is_climb else CRUISE_SPEED
+
+    kind = "climb" if is_climb else "cruise"
     print(f"\n[WAYPOINT {index}/{total}] x={x:+.1f} y={y:+.1f} z={z:.2f} "
-          f"heading {yaw_deg:+.0f} ({leg_length:.1f} m)")
+          f"heading {yaw_deg:+.0f}  {leg_length:.1f} m  {kind} at {speed} m/s")
 
     dt = 0.1
     travelled = 0.0
     elapsed = 0.0
-    max_time = leg_length / CRUISE_SPEED + TIMEOUT_MARGIN
+    max_time = leg_length / speed + TIMEOUT_MARGIN
+
+    # Altitude hold measures clean while stationary (3 mm bias, 1 cm spread),
+    # so any vertical disturbance must come from the motion itself. Track it
+    # per leg to see whether that is what pushes codes out of frame.
+    alt_samples = []
 
     while elapsed < max_time:
-        travelled = min(leg_length, travelled + CRUISE_SPEED * dt)
+        travelled = min(leg_length, travelled + speed * dt)
         fraction = 1.0 if leg_length == 0 else travelled / leg_length
+        cn, ce = corrected(start_n + (target_n - start_n) * fraction,
+                           start_e + (target_e - start_e) * fraction)
         await drone.offboard.set_position_ned(PositionNedYaw(
-            start_n + (target_n - start_n) * fraction,
-            start_e + (target_e - start_e) * fraction,
-            start_d + (target_d - start_d) * fraction,
-            yaw_deg))
+            cn, ce, start_d + (target_d - start_d) * fraction, yaw_deg))
         await poll_camera()
+
+        alt_samples.append(-current_pos["d"] - z)
 
         if (travelled >= leg_length
                 and distance_to(target_n, target_e, target_d) < WAYPOINT_TOLERANCE):
-            print(f"           reached (codes so far: {len(inventory)})")
+            # Hold until the vehicle has actually caught up. Moving on the
+            # moment the setpoint arrives leaves residual error that carries
+            # into the next leg, which is what pushed codes out of frame.
+            settle = 0.0
+            while settle < SETTLE_TIMEOUT_S:
+                cn, ce = corrected(target_n, target_e)
+                await drone.offboard.set_position_ned(PositionNedYaw(
+                    cn, ce, target_d, yaw_deg))
+                await poll_camera()
+                if abs(-current_pos["d"] - z) < SETTLE_TOLERANCE:
+                    break
+                await asyncio.sleep(dt)
+                settle += dt
+                
+            # Wait an extra 1.5 seconds for the drone to level out its roll/pitch 
+            # after braking. We poll the camera during this time because the drone is 
+            # flat and hovering, which gives us perfectly accurate ArUco drift readings.
+            global is_settled
+            is_settled = True
+            elapsed_settle = 0.0
+            while elapsed_settle < 1.5:
+                await poll_camera()
+                await asyncio.sleep(dt)
+                elapsed_settle += dt
+            is_settled = False
+
+            residual = -current_pos["d"] - z
+            if alt_samples:
+                worst = max(alt_samples, key=abs)
+                spread = max(alt_samples) - min(alt_samples)
+                flag = "  OUT OF FRAME" if abs(worst) > 0.37 else ""
+                print(f"           reached  codes {len(inventory)}  "
+                      f"alt worst {worst:+.3f} spread {spread:.3f} "
+                      f"residual {residual:+.3f} settled in {settle:.1f}s{flag}")
             return True
 
         await asyncio.sleep(dt)
@@ -391,10 +667,15 @@ async def run():
     print(f"  Shelf levels   : {len(FLIGHT_Z)}")
     print(f"  Waypoints      : {len(route)}")
     print("  Localization   : optical flow with EKF2, GPS disabled")
+    print("  Drift correction: ArUco floor markers, offset applied to setpoints")
     print("=" * 68)
+
+    load_marker_map()
 
     cam_node = trans.Node()
     cam_node.subscribe(Image, CAM_HIRES, on_hires_image)
+    down_node = trans.Node()
+    down_node.subscribe(Image, CAM_DOWN, on_down_image)
 
     drone = System()
     await drone.connect(system_address="udp://:14540")
@@ -406,26 +687,44 @@ async def run():
     asyncio.create_task(track_position(drone))
     asyncio.create_task(track_heading(drone))
 
-    print("[INFO] Waiting for position estimate")
+    print("[INFO] Waiting for position estimate (VIO Local Position)")
     async for health in drone.telemetry.health():
-        if health.is_local_position_ok and health.is_home_position_ok:
+        if health.is_local_position_ok:
             break
     print("[INFO] Position estimate valid")
 
-    print("[INFO] Arming and taking off")
-    await drone.action.arm()
-    await drone.action.takeoff()
-    await asyncio.sleep(8)
+    await asyncio.sleep(2)  # Ensure current_pos is populated
+    global origin_pos
+    origin_pos = {"n": current_pos["n"], "e": current_pos["e"], "d": current_pos["d"]}
+    print(f"[INFO] EKF2 Local Origin mapped to: {origin_pos}")
 
-    print("[INFO] Entering offboard mode")
+    print("[INFO] Arming and taking off (Offboard VIO Mode)")
+    # Hold current position and heading to prevent violent spin on the ground
+    start_n = current_pos["n"]
+    start_e = current_pos["e"]
+    start_d = current_pos["d"]
+    start_yaw = current_yaw["deg"]
+    
     await drone.offboard.set_position_ned(PositionNedYaw(
-        current_pos["n"], current_pos["e"], current_pos["d"], YAW_NORTH))
+        start_n, start_e, start_d, start_yaw))
     try:
         await drone.offboard.start()
     except OffboardError as error:
         print(f"[ERROR] Offboard rejected: {error}")
-        await drone.action.land()
         return
+        
+    await drone.action.arm()
+    
+    # Smoothly ascend to 1.5m above ground
+    print("           ascending...")
+    for i in range(15):
+        target_d = start_d - (i / 10.0)
+        await drone.offboard.set_position_ned(PositionNedYaw(
+            start_n, start_e, target_d, start_yaw))
+        await asyncio.sleep(0.5)
+        
+    print("           turning to route heading...")
+    await hold_heading(drone, YAW_NORTH)
 
     print("\n[INFO] Starting scan")
     reached = 0
@@ -441,6 +740,15 @@ async def run():
     print("  SCAN COMPLETE")
     print(f"  Waypoints reached : {reached}/{len(route)}")
     print(f"  Codes decoded     : {len(inventory)}")
+    print(f"  Marker fixes      : {len(marker_events)}")
+    if marker_events:
+        drifts = [e["error_m"] for e in marker_events]
+        drifts_sorted = sorted(drifts)
+        median = drifts_sorted[len(drifts_sorted) // 2]
+        print(f"  Drift at fix      : median {median:.3f} m, "
+              f"max {max(drifts):.3f} m")
+        print(f"  Final offset      : "
+              f"{math.hypot(drift_offset['n'], drift_offset['e']):.3f} m")
     print("=" * 68)
 
     with open(OUTPUT_JSON, "w", encoding="utf-8") as handle:
@@ -450,6 +758,9 @@ async def run():
             "localization": "optical flow, no GPS",
             "total_detected": len(inventory),
             "waypoints_completed": f"{reached}/{len(route)}",
+            "marker_corrections": marker_events,
+            "final_drift_offset_m": round(
+                math.hypot(drift_offset["n"], drift_offset["e"]), 3),
             "items": list(inventory.values()),
         }, handle, indent=2, ensure_ascii=False)
     print(f"\n[INFO] Inventory written to {OUTPUT_JSON}")

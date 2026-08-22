@@ -1,8 +1,25 @@
 #!/bin/sh
 #
-# @name Gazebo x500 scanner (left/right cameras + optical flow, warehouse inventory)
+# @name Gazebo x500 scanner (C27 sensor configuration, warehouse inventory)
 #
 # @type Quadrotor
 #
+# GPS is disabled on purpose. This vehicle operates indoors and localizes
+# using optical flow fused by EKF2.
+#
 PX4_SIM_MODEL=${PX4_SIM_MODEL:=x500_scanner}
 . ${R}etc/init.d-posix/airframes/4001_gz_x500
+
+echo "Disabling simulated GPS - indoor optical flow operation"
+param set-default SYS_HAS_GPS 0
+param set-default SIM_GPS_USED 0
+param set-default EKF2_GPS_CTRL 0
+
+# Height reference must come from the range sensor, not GPS.
+#
+# The default value is 1, meaning GPS altitude. With GPS disabled that leaves
+# EKF2 with no height source, and without height the optical flow measurement
+# cannot be converted into a velocity. The symptom is distance_sensor and
+# sensor_optical_flow both reading "never published" while xy_valid stays
+# false, which looks like a sensor fault but is a configuration one.
+param set-default EKF2_HGT_REF 2
