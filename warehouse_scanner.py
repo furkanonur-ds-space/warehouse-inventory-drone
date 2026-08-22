@@ -517,6 +517,45 @@ def build_route():
     return route
 
 
+# Consecutive setpoint send failures tolerated before giving up. PX4 leaves
+# offboard if setpoints stop arriving for about half a second, and the flight
+# loops run at 0.1 s, so a handful of retries is the entire budget.
+SETPOINT_FAILURE_LIMIT = 5
+
+setpoint_failures = [0]
+
+
+async def send_setpoint(drone, north, east, down, yaw_deg):
+    """
+    Send one offboard setpoint, surviving a transient send failure.
+
+    MAVSDK raises when a MAVLink message cannot be sent, which happens when the
+    machine is loaded enough to stall the link (observed as
+    "Sending message failed (mavsdk_impl.cpp:801)"). Unguarded, that exception
+    propagates out of the flight loop and stops the setpoint stream altogether;
+    PX4 then drops offboard and enters failsafe, and the vehicle falls out of
+    the air. Losing one setpoint is harmless, losing the loop is not.
+
+    Persistent failure means the link is gone and the vehicle cannot be
+    commanded at all, so it is raised rather than hidden.
+    """
+    try:
+        await drone.offboard.set_position_ned(
+            PositionNedYaw(north, east, down, yaw_deg))
+        setpoint_failures[0] = 0
+        return True
+    except Exception as error:
+        setpoint_failures[0] += 1
+        print(f"[WARN] setpoint send failed "
+              f"({setpoint_failures[0]}/{SETPOINT_FAILURE_LIMIT}): {error}")
+        if setpoint_failures[0] >= SETPOINT_FAILURE_LIMIT:
+            raise RuntimeError(
+                "offboard setpoint stream lost; PX4 will enter failsafe. "
+                "This is usually the machine being too loaded to service the "
+                "MAVLink link, not a flight logic fault.") from error
+        return False
+
+
 def corrected(n, e):
     """
     Apply the accumulated drift correction to a setpoint.
@@ -563,16 +602,14 @@ async def hold_heading(drone, yaw_deg):
     for i in range(steps):
         f = (i + 1) / steps
         cur_target = start_yaw + delta * f
-        await drone.offboard.set_position_ned(PositionNedYaw(
-            hold_n, hold_e, hold_d, cur_target))
+        await send_setpoint(drone, hold_n, hold_e, hold_d, cur_target)
         await poll_camera()
         await asyncio.sleep(0.1)
         
     # Settle
     elapsed = 0.0
     while elapsed < TURN_SETTLE_S:
-        await drone.offboard.set_position_ned(PositionNedYaw(
-            hold_n, hold_e, hold_d, yaw_deg))
+        await send_setpoint(drone, hold_n, hold_e, hold_d, yaw_deg)
         await poll_camera()
         await asyncio.sleep(0.1)
         elapsed += 0.1
@@ -625,8 +662,8 @@ async def goto_waypoint(drone, index, total, x, y, z, yaw_deg):
         fraction = 1.0 if leg_length == 0 else travelled / leg_length
         cn, ce = corrected(start_n + (target_n - start_n) * fraction,
                            start_e + (target_e - start_e) * fraction)
-        await drone.offboard.set_position_ned(PositionNedYaw(
-            cn, ce, start_d + (target_d - start_d) * fraction, yaw_deg))
+        await send_setpoint(drone, cn, ce,
+                            start_d + (target_d - start_d) * fraction, yaw_deg)
         await poll_camera()
 
         alt_samples.append(-current_pos["d"] - z)
@@ -639,8 +676,7 @@ async def goto_waypoint(drone, index, total, x, y, z, yaw_deg):
             settle = 0.0
             while settle < SETTLE_TIMEOUT_S:
                 cn, ce = corrected(target_n, target_e)
-                await drone.offboard.set_position_ned(PositionNedYaw(
-                    cn, ce, target_d, yaw_deg))
+                await send_setpoint(drone, cn, ce, target_d, yaw_deg)
                 await poll_camera()
                 if abs(-current_pos["d"] - z) < SETTLE_TOLERANCE:
                     break
@@ -724,8 +760,7 @@ async def run():
     start_d = current_pos["d"]
     start_yaw = current_yaw["deg"]
     
-    await drone.offboard.set_position_ned(PositionNedYaw(
-        start_n, start_e, start_d, start_yaw))
+    await send_setpoint(drone, start_n, start_e, start_d, start_yaw)
     try:
         await drone.offboard.start()
     except OffboardError as error:
@@ -738,8 +773,7 @@ async def run():
     print("           ascending...")
     for i in range(15):
         target_d = start_d - (i / 10.0)
-        await drone.offboard.set_position_ned(PositionNedYaw(
-            start_n, start_e, target_d, start_yaw))
+        await send_setpoint(drone, start_n, start_e, target_d, start_yaw)
         await asyncio.sleep(0.5)
         
     print("           turning to route heading...")

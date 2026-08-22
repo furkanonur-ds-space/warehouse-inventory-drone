@@ -138,10 +138,20 @@ def range_block(link_name, joint_name, x_off, y_off, z_off,
 #
 # The real IMX412 is 4056x3040, but its processing streams are downscaled to
 # 1024x768, so 1280x720 is representative of what the pipeline actually sees.
+# Camera update rates are deliberately low.
+#
+# Gazebo's memory grows with every rendered frame here, and a full scan takes
+# about half an hour. At 30 Hz on all four cameras it reached 26 GB of 27 GB
+# and the machine began swapping, which stalled the MAVLink link, stopped the
+# offboard setpoint stream and dropped the vehicle out of the air. It happened
+# near the end of the route every time, which looked like a flight logic fault
+# but is purely elapsed time.
+#
+# 10 Hz at 0.6 m/s cruise is a frame every 6 cm, far more than a box needs.
 hires_front = camera_block(
     "camera_hires_link", "camera_hires_joint",
     0.10, 0.0, 0.0, 0, 0, 0,
-    fov=1.0472, width=1280, height=720)
+    fov=1.0472, width=1280, height=720, update_rate=10)
 
 # --- AR0144 tracking cameras -------------------------------------------
 #
@@ -151,15 +161,20 @@ hires_front = camera_block(
 #
 # Simulated at 640x480 because they feed motion estimation rather than
 # perception, and the resolution saves render time that the hires camera needs.
+# The front and rear tracking cameras exist to represent the C27 sensor set.
+# Nothing consumes their images: the VIO they would feed is simulated by
+# OdometryPublisher instead, which reads the model pose directly. They are kept
+# for fidelity but rendered as rarely as possible, since every frame costs
+# memory that the run cannot spare.
 tracking_front = camera_block(
     "camera_track_front_link", "camera_track_front_joint",
     0.08, 0.0, -0.03, 0, 0, 0,
-    fov=1.5708, width=640, height=480)
+    fov=1.5708, width=640, height=480, update_rate=1)
 
 tracking_rear = camera_block(
     "camera_track_rear_link", "camera_track_rear_joint",
     -0.08, 0.0, -0.03, 0, 0, 3.14159,
-    fov=1.5708, width=640, height=480)
+    fov=1.5708, width=640, height=480, update_rate=1)
 
 # The downward tracking camera doubles as the ArUco marker reader for drift
 # correction. A 40 cm marker at 1.8 m altitude resolves to about 10 px/module
@@ -167,7 +182,7 @@ tracking_rear = camera_block(
 tracking_down = camera_block(
     "camera_track_down_link", "camera_track_down_joint",
     0.0, 0.0, -0.05, 0, 1.5708, 0,
-    fov=1.5708, width=640, height=480)
+    fov=1.5708, width=640, height=480, update_rate=10)
 
 # --- Sensors required for GPS-free position estimation -----------------
 #
@@ -222,6 +237,28 @@ tracking_down = camera_block(
 # plugin had no camera to read from.
 # VIO simulation via OdometryPublisher.
 # This simulates the VOXL 2 computing VIO from the tracking cameras.
+#
+# Note what this does NOT simulate: the plugin reports the model's true pose,
+# so the simulated VIO is exact and never drifts. Real VIO does. That makes the
+# ArUco drift correction untestable by default, because there is nothing for it
+# to correct, and any claim that the correction "works" is unfalsifiable.
+#
+# Neither knob this plugin offers can simulate that drift, so do not reach for
+# them:
+#
+#   xyz_offset      is a mounting offset, not a bias. It rotates with the body,
+#                   so a 0.5 m value gives the odometry a 0.5 m lever arm: yaw
+#                   becomes apparent translation, EKF2 reads it as violent
+#                   motion, and the vehicle tumbles before it can take off.
+#                   Tried, and it does exactly that.
+#   gaussian_noise  is zero-mean. EKF2 averages it out, so it adds per-sample
+#                   noise but no accumulating error, which is what the ArUco
+#                   correction exists to cancel.
+#
+# The correction geometry is therefore verified offline instead, by
+# test_drift_correction.py, which drives it with synthetic frames and a known
+# injected error. That test found a real defect the simulator could never have
+# surfaced: the correction summed its measurement instead of converging on it.
 vio_odometry = '''
     <plugin
       filename="gz-sim-odometry-publisher-system"
