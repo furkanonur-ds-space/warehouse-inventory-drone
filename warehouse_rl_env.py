@@ -1,11 +1,11 @@
 """
-Depo-benzeri RL ortami - Gazebo'daki gercek raf duzenimizle AYNI koordinatlar.
-Coklu koridor, model kendi kendine koridorlar arasi gecisi ogrenecek
+Warehouse-like RL environment, using the same coordinates as the Gazebo shelf layout.
+Multiple aisles; the model learns to move between them on its own.
 (bizim elle yazdigimiz turn_90/shift_to_next_corridor mantigini biz yazmiyoruz,
 model kendi kesfediyor).
 
 Observation: 8 yonlu lidar mesafesi + hedefe mesafe + hedefe aci = 10 sayi
-Action:      [ileri_hiz, donus_hizi] (-1..1)
+Action:      [forward_speed, turn_rate] (-1..1)
 """
 import numpy as np
 import gymnasium as gym
@@ -21,7 +21,7 @@ class WarehouseEnv(gym.Env):
     def __init__(self, render_mode="none", start_pos=None):
         super().__init__()
         self.render_mode = render_mode
-        # Curriculum learning icin: baslangic konumu disaridan verilebilir
+        # For curriculum learning: the start position can be supplied by the caller
         self.custom_start_pos = np.array(start_pos, dtype=float) if start_pos is not None else None
 
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
@@ -50,10 +50,10 @@ class WarehouseEnv(gym.Env):
         p.loadURDF("plane.urdf")
 
         # GERCEK GAZEBO DEPOMUZLA AYNI KOORDINATLAR:
-        # Raf siralari y=[-6,-2,2,6], her biri x=-7.5..7.5 arasi kapli (genislik 15m, 3 parca birlesik)
-        # Koridorlar arasi gecit: x=±8.5'te (aruco marker koydugumuz yerler)
+        # Shelf rows at y=[-6,-2,2,6], each spanning x=-7.5..7.5 (15 m wide, 3 segments joined)
+        # Openings between aisles at x=+/-8.5, where the ArUco markers are placed
         self.wall_ids = []
-        shelf_half = [7.5, 0.4, 1.0]  # tum sirayi tek kutu olarak temsil ediyoruz
+        shelf_half = [7.5, 0.4, 1.0]  # the whole row is represented as one block
         shelf_rows_y = [-6, -2, 2, 6]
         for y in shelf_rows_y:
             col = p.createCollisionShape(p.GEOM_BOX, halfExtents=shelf_half)
@@ -62,7 +62,7 @@ class WarehouseEnv(gym.Env):
                                      baseVisualShapeIndex=vis, basePosition=[0, y, 1.0])
             self.wall_ids.append(wid)
 
-        # Dis duvarlar (x=±10, y=±10 - Gazebo ile ayni)
+        # Outer walls (x=+/-10, y=+/-10, same as Gazebo)
         outer_walls = [
             ([0, 10, 2], [10, 0.3, 2]),
             ([0, -10, 2], [10, 0.3, 2]),
@@ -82,7 +82,7 @@ class WarehouseEnv(gym.Env):
         self.drone_id = p.createMultiBody(baseMass=0, baseVisualShapeIndex=drone_vis,
                                            basePosition=self.start_pos.tolist())
 
-        # Hedef: kutulardan birinin konumu (Gazebo'daki warehouse_box_qr_0 ile ayni yer)
+        # Goal: the position of one of the boxes (same place as warehouse_box_qr_0 in Gazebo)
         goal_vis = p.createVisualShape(p.GEOM_SPHERE, radius=0.25, rgbaColor=[0.1, 0.9, 0.1, 0.6])
         self.goal_pos = np.array([-6.0, -5.8, 1.0])
         self.goal_id = p.createMultiBody(baseMass=0, baseVisualShapeIndex=goal_vis,

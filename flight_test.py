@@ -25,7 +25,7 @@ async def run():
     print("[INFO] Taking off (This might be in slow-motion due to WSL, grab a coffee!)...")
     await drone.action.takeoff()
     
-    # SENİ SIKINTIDAN KURTARACAK KISIM: Canlı irtifa takibi!
+    # Live altitude tracking, so the climb can be watched as it happens.
     async for position in drone.telemetry.position():
         altitude = position.relative_altitude_m
         print(f"Current Altitude: {altitude:.2f} meters")
@@ -33,8 +33,8 @@ async def run():
             print("[SUCCESS] Target altitude reached safely!")
             break
 
-    # SİHİRLİ DOKUNUŞ: Döngüyü kırdıktan sonra gRPC kanalının (Socket) 
-    # kendini toparlaması için 2 saniye nefes aldırıyoruz. Çökmeyi bu engelliyor!
+    # Give the gRPC channel two seconds to recover after breaking out of
+    # the telemetry loop. Without this the connection crashes.
     await asyncio.sleep(2)
 
     print("[INFO] Setting initial setpoint...")
@@ -50,7 +50,7 @@ async def run():
     print("[INFO] Flying 2 meters forward...")
     await drone.offboard.set_position_ned(PositionNedYaw(2.0, 0.0, -2.5, 0.0))
     
-    # Yavaşlık olduğu için ileri uçuşa bol bol zaman tanıyalım (20 sn)
+    # Allow plenty of time for the forward leg, since SITL runs slowly (20 s)
     print("[INFO] Waiting for drone to reach the target...")
     await asyncio.sleep(20)
 

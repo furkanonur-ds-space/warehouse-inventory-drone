@@ -57,11 +57,11 @@ def on_image(msg):
 async def smart_sleep(seconds):
     for _ in range(int(seconds * 10)):
         if latest_frame is not None:
-            cv2.imshow("Otonom Inis Kamerasi", latest_frame)
+            cv2.imshow("Autonomous Landing Camera", latest_frame)
             cv2.waitKey(1)
         await asyncio.sleep(0.1)
 
-# Hata yakalayici ile korunan arka plan gorevleri
+# Background tasks guarded by an exception handler
 async def get_altitude(drone):
     global current_altitude
     try:
@@ -89,33 +89,33 @@ async def run():
     drone = System()
     await drone.connect(system_address="udp://:14540")
     
-    print("[BILGI] Drone baglantisi kuruluyor...")
+    print("[INFO] Connecting to vehicle...")
     async for state in drone.core.connection_state():
         if state.is_connected: break
 
     asyncio.create_task(get_altitude(drone))
     asyncio.create_task(get_health(drone))
 
-    print("[BILGI] Sensorler bekleniyor...")
+    print("[INFO] Waiting for sensors...")
     while not sensors_ready:
         if latest_frame is not None:
-            cv2.imshow("Otonom Inis Kamerasi", latest_frame)
+            cv2.imshow("Autonomous Landing Camera", latest_frame)
             cv2.waitKey(1)
         await asyncio.sleep(0.1)
 
-    print("[BILGI] Motorlar calistiriliyor...")
+    print("[INFO] Arming motors...")
     await drone.action.arm()
     await drone.action.takeoff()
 
-    print("[BILGI] Drone'un yerden yukselmesi bekleniyor...")
+    print("[INFO] Waiting for the vehicle to leave the ground...")
     while current_altitude < 2.0:
         if latest_frame is not None:
-            cv2.imshow("Otonom Inis Kamerasi", latest_frame)
+            cv2.imshow("Autonomous Landing Camera", latest_frame)
             cv2.waitKey(1)
         await asyncio.sleep(0.1)
 
-    # O SACMA 2 SANIYELIK BEKLEMEYI COPPE ATTIK! Direk otonom moda akiyoruz!
-    print(f"[BASARILI] Irtifa {current_altitude:.2f} metre! Otonom Offboard Gecisi...")
+    # No fixed wait here: go straight to offboard once airborne.
+    print(f"[SUCCESS] Altitude {current_altitude:.2f} m. Switching to offboard...")
     await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
     await drone.offboard.start()
 
@@ -123,7 +123,7 @@ async def run():
 
     while True:
         if latest_frame is not None:
-            cv2.imshow("Otonom Inis Kamerasi", latest_frame)
+            cv2.imshow("Autonomous Landing Camera", latest_frame)
             cv2.waitKey(1)
 
         if target_found:
@@ -133,10 +133,10 @@ async def run():
             if abs(err_x) < 30 and abs(err_y) < 30:
                 vz = 0.4  
                 if current_altitude < 0.35:
-                    print("[BASARILI] KARTAL YUVAYA KONDU! Motorlar kapatiliyor...")
+                    print("[SUCCESS] Landed on target. Disarming...")
                     await drone.offboard.stop()
                     await drone.action.land()
-                    print("[SOV ZAMANI] Inis kamerasi 8 saniye daha kayitta...")
+                    print("[INFO] Landing camera recording for another 8 seconds...")
                     await smart_sleep(8) 
                     break
             else:
@@ -144,12 +144,12 @@ async def run():
             await drone.offboard.set_velocity_body(VelocityBodyYawspeed(vx, vy, vz, 0.0))
         else:
             if 0.1 < current_altitude < 0.6:
-                print("[BILGI] Hedef goruntuden cikti. KOR INIS yapiliyor!")
+                print("[INFO] Target left the frame. Continuing blind descent.")
                 await drone.offboard.stop()
                 await drone.action.land()
-                print("[SOV ZAMANI] Yere inis izleniyor (8 sn)...")
+                print("[INFO] Watching the descent (8 s)...")
                 await smart_sleep(8) 
-                print("[BASARILI] GOREV TAMAMLANDI!")
+                print("[SUCCESS] Mission complete.")
                 break
             else:
                 await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))

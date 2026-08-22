@@ -12,7 +12,7 @@ from mavsdk.offboard import VelocityBodyYawspeed, OffboardError
 import gz.transport13 as trans
 from gz.msgs10.image_pb2 import Image
 
-# ─── AYARLAR ────────────────────────────────────────────────
+# --- SETTINGS ----------------------------------------------
 MARKER_ID   = int(sys.argv[1])   if len(sys.argv) > 1 else 0
 MARKER_SIZE = float(sys.argv[2]) if len(sys.argv) > 2 else 0.5
 LIGHT_COND  = sys.argv[3]        if len(sys.argv) > 3 else "normal"
@@ -24,14 +24,14 @@ ARUCO_DICT   = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
 ARUCO_PARAMS = cv2.aruco.DetectorParameters()
 DETECTOR     = cv2.aruco.ArucoDetector(ARUCO_DICT, ARUCO_PARAMS)
 
-# ─── DURUM ──────────────────────────────────────────────────
+# --- STATE -------------------------------------------------
 latest_frame     = None
 current_altitude = 0.0
 sensors_ready    = False
 detected         = False
 err_x, err_y     = 0, 0
 
-# ─── KAMERA ─────────────────────────────────────────────────
+# --- CAMERA ------------------------------------------------
 def on_image(msg):
     global latest_frame, detected, err_x, err_y
     try:
@@ -59,7 +59,7 @@ def on_image(msg):
     except Exception:
         pass
 
-# ─── ARKA PLAN ──────────────────────────────────────────────
+# --- BACKGROUND --------------------------------------------
 async def get_altitude(drone):
     global current_altitude
     try:
@@ -76,7 +76,7 @@ async def get_health(drone):
                              h.is_home_position_ok)
     except: pass
 
-# ─── CSV KAYIT ──────────────────────────────────────────────
+# --- CSV OUTPUT --------------------------------------------
 def save_result(altitude, yaw_deg, det, ex, ey, duration_ms):
     file_exists = os.path.isfile(CSV_FILE)
     with open(CSV_FILE, "a", newline="") as f:
@@ -92,27 +92,27 @@ def save_result(altitude, yaw_deg, det, ex, ey, duration_ms):
             round(altitude, 2), yaw_deg,
             int(det), ex, ey, round(duration_ms, 1)
         ])
-    status = "TESPIT EDILDI ✓" if det else "TESPIT EDILEMEDI ✗"
-    print(f"  [{status}] Alt={altitude:.1f}m  Yaw={yaw_deg}°  "
-          f"Hata=({ex},{ey})px  Sure={duration_ms:.0f}ms")
+    status = "DETECTED" if det else "NOT DETECTED"
+    print(f"  [{status}] Alt={altitude:.1f}m  Yaw={yaw_deg}deg  "
+          f"Error=({ex},{ey})px  Time={duration_ms:.0f}ms")
 
-# ─── TEST SENARYOLARI ────────────────────────────────────────
-# (irtifa_m, yaw_acisi_derece)
+# --- TEST SCENARIOS ----------------------------------------
+# (altitude_m, yaw_angle_degrees)
 TEST_SCENARIOS = [
-    (1.0,  0),   # 1m yükseklik, düz bakar
-    (2.0,  0),   # 2m yükseklik, düz bakar
-    (5.0,  0),   # 5m yükseklik, düz bakar
-    (2.0, 30),   # 2m yükseklik, 30° yaw
-    (2.0, 45),   # 2m yükseklik, 45° yaw
-    (2.0, 60),   # 2m yükseklik, 60° yaw
+    (1.0,  0),   # 1 m altitude, looking straight down
+    (2.0,  0),   # 2 m altitude, looking straight down
+    (5.0,  0),   # 5 m altitude, looking straight down
+    (2.0, 30),   # 2 m altitude, 30 degree yaw
+    (2.0, 45),   # 2 m altitude, 45 degree yaw
+    (2.0, 60),   # 2 m altitude, 60 degree yaw
 ]
 
-# ─── ANA FONKSIYON ──────────────────────────────────────────
+# --- MAIN --------------------------------------------------
 async def run():
     print(f"\n{'='*55}")
-    print(f"  ARUCO TEST BASLIYOR")
+    print(f"  ARUCO TEST STARTING")
     print(f"  Marker ID   : {MARKER_ID}")
-    print(f"  Marker Boyut: {MARKER_SIZE}m x {MARKER_SIZE}m")
+    print(f"  Marker size : {MARKER_SIZE}m x {MARKER_SIZE}m")
     print(f"  Isik Kosulu : {LIGHT_COND}")
     print(f"  Senaryo Say.: {len(TEST_SCENARIOS)}")
     print(f"{'='*55}\n")
@@ -123,37 +123,37 @@ async def run():
     drone = System()
     await drone.connect(system_address="udp://:14540")
 
-    print("[BILGI] Drone baglantisi bekleniyor...")
+    print("[INFO] Waiting for vehicle connection...")
     async for state in drone.core.connection_state():
         if state.is_connected: break
 
     asyncio.create_task(get_altitude(drone))
     asyncio.create_task(get_health(drone))
 
-    print("[BILGI] Sensorler bekleniyor...")
+    print("[INFO] Waiting for sensors...")
     while not sensors_ready:
         await asyncio.sleep(0.2)
 
-    print("[BILGI] Kalkis basliyor...")
+    print("[INFO] Taking off...")
     await drone.action.arm()
     await drone.action.takeoff()
     while current_altitude < 1.8:
         await asyncio.sleep(0.1)
 
-    print(f"[BILGI] Irtifa {current_altitude:.1f}m. Offboard moda geciliyor...")
+    print(f"[INFO] Altitude {current_altitude:.1f}m. Switching to offboard...")
     await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
     try:
         await drone.offboard.start()
     except OffboardError as e:
-        print(f"[HATA] Offboard: {e}")
+        print(f"[ERROR] Offboard: {e}")
         return
 
-    # ── TEST DONGUSU ─────────────────────────────────────────
+    # --- TEST LOOP -----------------------------------------
     for i, (target_alt, yaw_deg) in enumerate(TEST_SCENARIOS):
         print(f"\n[TEST {i+1}/{len(TEST_SCENARIOS)}] "
-              f"Hedef irtifa={target_alt}m  Yaw={yaw_deg}°")
+              f"Target altitude={target_alt}m  Yaw={yaw_deg}deg")
 
-        # 1) İrtifaya çık/in
+        # 1) Climb or descend to the target altitude
         current = current_altitude
         vz = -0.5 if target_alt > current_altitude else 0.5
         while abs(current_altitude - target_alt) > 0.15:
@@ -164,7 +164,7 @@ async def run():
             VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
         await asyncio.sleep(1.5)  # stabilize
 
-        # 2) Yaw uygula
+        # 2) Apply yaw
         if yaw_deg > 0:
             await drone.offboard.set_velocity_body(
                 VelocityBodyYawspeed(0.0, 0.0, 0.0, 30.0))
@@ -173,10 +173,10 @@ async def run():
                 VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
             await asyncio.sleep(1.0)
 
-        # 3) 3 sn boyunca tespiti ölç
+        # 3) Measure detection for 3 seconds
         results = []
         t_start = time.time()
-        for _ in range(30):   # 30 x 0.1s = 3 saniye
+        for _ in range(30):   # 30 x 0.1 s = 3 seconds
             t0  = time.time()
             det = detected
             ex, ey = err_x, err_y
@@ -184,17 +184,17 @@ async def run():
             results.append((det, ex, ey, dt))
             await asyncio.sleep(0.1)
 
-        # 4) Sonucu özetle ve kaydet
+        # 4) Summarise and record the result
         det_count  = sum(1 for r in results if r[0])
         det_rate   = det_count / len(results) * 100
         best       = next(((ex, ey, dt) for (d, ex, ey, dt) in results if d), (0, 0, 0))
         avg_dt     = np.mean([r[3] for r in results])
 
-        print(f"  Tespit orani: {det_rate:.0f}%  ({det_count}/30 frame)")
+        print(f"  Detection rate: {det_rate:.0f}%  ({det_count}/30 frames)")
         save_result(current_altitude, yaw_deg,
                     det_rate > 50, best[0], best[1], avg_dt)
 
-        # 5) Yaw'ı sıfırla
+        # 5) Return yaw to zero
         if yaw_deg > 0:
             await drone.offboard.set_velocity_body(
                 VelocityBodyYawspeed(0.0, 0.0, 0.0, -30.0))
@@ -203,14 +203,14 @@ async def run():
                 VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
             await asyncio.sleep(0.5)
 
-    # ── İNİŞ ─────────────────────────────────────────────────
-    print("\n[BILGI] Testler tamamlandi. Iniliyor...")
+    # --- LANDING -------------------------------------------
+    print("\n[INFO] Tests complete. Landing...")
     await drone.offboard.stop()
     await drone.action.land()
 
     print(f"\n{'='*55}")
-    print(f"  TUM TESTLER TAMAMLANDI!")
-    print(f"  Sonuclar: {CSV_FILE}")
+    print(f"  ALL TESTS COMPLETE")
+    print(f"  Results: {CSV_FILE}")
     print(f"{'='*55}\n")
 
 if __name__ == "__main__":

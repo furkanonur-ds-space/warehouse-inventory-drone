@@ -25,7 +25,7 @@ def main():
             ranges = list(latest_scan.ranges)
             n = len(ranges)
 
-            # Lidar 270 derece, 1080 nokta -> merkez index = sol/sag/on
+            # Lidar spans 270 degrees over 1080 points -> centre index gives left/right/front
             front_idx = n // 2          # tam on (0 derece)
             left_idx  = n // 4          # sol (yaklasik -67.5 derece)
             right_idx = 3 * n // 4      # sag (yaklasik +67.5 derece)

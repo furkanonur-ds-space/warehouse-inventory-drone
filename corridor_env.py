@@ -1,11 +1,11 @@
 """
-Basit koridor kacinma ortami (Gymnasium uyumlu).
-Drone'u kinematik bir nokta olarak modelliyoruz (tam fizik degil) -
+Simple corridor-avoidance environment (Gymnasium compatible).
+The vehicle is modelled as a kinematic point rather than with full physics,
 boylece PX4/Gazebo'daki VelocityBodyYawspeed kontrolune birebir denk gelir.
 
 Observation: [on_mesafe, sol_mesafe, sag_mesafe, hedefe_mesafe, hedefe_aci] (5 sayi, normalize)
-Action:      [ileri_hiz, donus_hizi] (-1..1 araligi, sonra olceklenir)
-Reward:      hedefe yaklasinca +, carpinca buyuk -, adim basina kucuk -
+Action:      [forward_speed, turn_rate] (-1..1, scaled afterwards)
+Reward:      + for approaching the goal, large - for a collision, small - per step
 """
 import numpy as np
 import gymnasium as gym
@@ -22,14 +22,14 @@ class CorridorEnv(gym.Env):
         super().__init__()
         self.render_mode = render_mode
 
-        # Aksiyon: [ileri_hiz(-1..1), donus_hizi(-1..1)]
+        # Action: [forward_speed(-1..1), turn_rate(-1..1)]
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
         # Gozlem: [on, sol, sag, hedef_mesafe, hedef_aci] hepsi normalize -1..1 veya 0..1
         self.observation_space = spaces.Box(low=-1.0, high=1.0, shape=(5,), dtype=np.float32)
 
         self.max_speed = 1.0        # m/s
         self.max_yaw_rate = 60.0    # derece/s
-        self.dt = 0.1                # simulasyon adim suresi
+        self.dt = 0.1                # simulation step duration
         self.max_steps = 300
         self.lidar_max_range = 8.0
 
@@ -48,14 +48,14 @@ class CorridorEnv(gym.Env):
         p.setGravity(0, 0, 0)  # kinematik model, yercekimi gerekmiyor
         p.loadURDF("plane.urdf")
 
-        # Basit koridor: iki sira duvar (kutu), aralarinda gecit
+        # Simple corridor: two rows of wall blocks with a gap between them
         self.wall_ids = []
-        wall_half = [3.0, 0.2, 1.0]  # uzunluk, kalinlik, yukseklik/2
+        wall_half = [3.0, 0.2, 1.0]  # length, thickness, height/2
 
-        # Sol duvar sirasi (birkac parca, arasinda bosluklar - koridor kapilari)
+        # Left wall row, in segments with gaps that act as corridor openings
         wall_positions = [
-            (0, 2.0, 1.0), (0, -2.0, 1.0),      # ilk koridor
-            (8, 2.0, 1.0), (8, -2.0, 1.0),      # ikinci koridor
+            (0, 2.0, 1.0), (0, -2.0, 1.0),      # first corridor
+            (8, 2.0, 1.0), (8, -2.0, 1.0),      # second corridor
         ]
         for (x, y, z) in wall_positions:
             col = p.createCollisionShape(p.GEOM_BOX, halfExtents=wall_half)
@@ -64,12 +64,12 @@ class CorridorEnv(gym.Env):
                                      baseVisualShapeIndex=vis, basePosition=[x, y, z])
             self.wall_ids.append(wid)
 
-        # Drone temsili (kucuk kure, gorsel amacli)
+        # Vehicle marker (small sphere, for visualisation only)
         drone_vis = p.createVisualShape(p.GEOM_SPHERE, radius=0.15, rgbaColor=[0.1, 0.5, 1.0, 1])
         self.drone_id = p.createMultiBody(baseMass=0, baseVisualShapeIndex=drone_vis,
                                            basePosition=[-3, 0, 1])
 
-        # Hedef (yesil kure, gorsel amacli)
+        # Goal (green sphere, for visualisation only)
         goal_vis = p.createVisualShape(p.GEOM_SPHERE, radius=0.2, rgbaColor=[0.1, 0.9, 0.1, 0.6])
         self.goal_pos = np.array([12.0, 0.0, 1.0])
         self.goal_id = p.createMultiBody(baseMass=0, baseVisualShapeIndex=goal_vis,
@@ -144,10 +144,10 @@ class CorridorEnv(gym.Env):
 
         progress = self.prev_dist_to_goal - dist_to_goal
         reward += progress * 5.0          # hedefe yaklasinca odul
-        reward -= 0.02                     # zaman cezasi (hizli olsun diye)
+        reward -= 0.02                     # time penalty, to encourage speed
         self.prev_dist_to_goal = dist_to_goal
 
-        if front < 0.3:                    # carpma
+        if front < 0.3:                    # collision
             reward -= 20.0
             terminated = True
 

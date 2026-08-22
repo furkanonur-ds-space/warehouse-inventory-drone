@@ -16,13 +16,13 @@ for i in range(500):
     total_reward += reward
 
     if terminated or truncated:
-        print(f"Bolum bitti (adim {i}). Toplam odul: {total_reward:.2f}")
+        print(f"Episode finished (step {i}). Total reward: {total_reward:.2f}")
         if terminated and reward > 50:
-            print("HEDEFE ULASTI! (kutuyu buldu)")
+            print("Goal reached: the box was found.")
         elif terminated:
             print("CARPTI")
         else:
-            print("ZAMAN ASIMI (hedefe ulasamadi)")
+            print("Timed out: the goal was not reached.")
         break
 
 time.sleep(3)

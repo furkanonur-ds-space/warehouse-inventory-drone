@@ -18,25 +18,25 @@ def add_include(model_type, x, y, z, roll=0, pitch=0, yaw=0):
       <pose>{x} {y} {z} {roll} {pitch} {yaw}</pose>
     </include>''')
 
-# ── DIS DUVARLAR (20x20m) ──
+# --- OUTER WALLS (20x20 m) ---
 add_include('warehouse_wall', 0, 10, 2, 0, 0, 0)
 add_include('warehouse_wall', 0, -10, 2, 0, 0, 0)
 add_include('warehouse_wall', 10, 0, 2, 0, 0, 1.5708)
 add_include('warehouse_wall', -10, 0, 2, 0, 0, 1.5708)
 
-# ── 3 ADA ──
+# --- 3 ISLANDS ---
 islands_x = [-6.2, -1.6, 3.0]
 for i, cx in enumerate(islands_x):
     add_include(f'island_{i+1}', cx, 0, 0, 0, 0, 0)
 
-# ── 54 KUTU (envanterden) ──
+# --- 54 BOXES (from the inventory) ---
 for item in inventory:
     add_include(item['model'], item['x'], item['y'], item['z'], 0, 0, 0)
 
-# ── KORIDOR SONU ARUCO MARKERLARI (zeminde, her koridorun 2 ucunda) ──
+# --- AISLE-END ARUCO MARKERS (on the floor, at both ends of each aisle) ---
 corridor_x_centers = [-8.5, -3.9, 0.7, 6.9]
 aruco_id_counter = 1
-marker_map = {}   # {aruco_id: {"x":..., "y":...}} - drift duzeltmesi icin harita
+marker_map = {}   # {aruco_id: {"x":..., "y":...}} - map used for drift correction
 for cxc in corridor_x_centers:
     for y_end in [-8.0, 8.0]:
         # aruco_id1..8 modellerini kullaniyoruz (6 tane vardi, gerekirse tekrar kullanilir)
@@ -47,7 +47,7 @@ for cxc in corridor_x_centers:
         marker_map.setdefault(str(marker_id), []).append({"x": cxc, "y": y_end})
         aruco_id_counter += 1
 
-# Marker haritasini kaydet - drift duzeltmesi bu dosyayi kullanacak
+# Save the marker map; the drift correction reads this file
 import json as _json
 _map_path = os.path.expanduser('~/autonomous_landing/marker_map.json')
 with open(_map_path, 'w') as _f:
@@ -127,5 +127,5 @@ path = os.path.join(WORLDS, 'warehouse_v2.sdf')
 with open(path, 'w') as f:
     f.write(world_content)
 
-print(f"warehouse_v2.sdf olusturuldu!")
-print(f"3 ada, 54 kutu, 8 koridor-sonu marker")
+print(f"warehouse_v2.sdf generated")
+print(f"3 islands, 54 boxes, 8 aisle-end markers")

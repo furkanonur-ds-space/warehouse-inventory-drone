@@ -1,4 +1,4 @@
-"""Egitilmis modeli GUI acik calistirir, izlemek icin"""
+"""Run the trained model with the GUI open, so the behaviour can be watched."""
 from corridor_env import CorridorEnv
 from stable_baselines3 import PPO
 import time

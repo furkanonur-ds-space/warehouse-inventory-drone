@@ -29,7 +29,7 @@ model = PPO(
     batch_size=64,
 )
 
-print("Depo ortaminda egitim basliyor... (bu daha uzun surebilir - koridor gecisi zor bir gorev)")
+print("Training in the warehouse environment... this takes longer, since moving between aisles is a hard task")
 model.learn(total_timesteps=400_000, callback=eval_callback)
 
 model.save(os.path.join(MODEL_DIR, "final_model"))

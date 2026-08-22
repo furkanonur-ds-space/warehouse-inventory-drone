@@ -11,7 +11,7 @@ LEVELS_Z = [0.35, 1.0, 1.65]  # shelf plate heights
 
 islands_x = [-4.0, 0.0, 4.0]   # 2.4 m aisles between and either side
 
-# Ayaklar: X'te 2 kenar (-depth/2, +depth/2), Y'de her 3m'de bir
+# Legs: two edges in X (-depth/2, +depth/2), one every 3 m in Y
 leg_y_positions = [-6, -2, 2, 6]
 leg_x_offsets = [-ISLAND_DEPTH/2 + LEG_SIZE/2, ISLAND_DEPTH/2 - LEG_SIZE/2]
 

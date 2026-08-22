@@ -6,7 +6,7 @@ import socket
 import importlib.util
 import sys
 
-# UDP sunucusu
+# UDP server
 udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 def send_intel(msg):
     udp_sock.sendto(f"[MERKEZ] {msg}".encode("utf-8"), ("127.0.0.1", 5005))
@@ -28,14 +28,14 @@ def load_drone_module(idx):
     return mod
 
 async def main():
-    send_intel("Suru operasyonu baslatiliyor...")
+    send_intel("Starting swarm operation...")
 
-    # 1. Aşama: Yerde Senkronizasyon (Motor calistirma ve kalkis)
+    # Stage 1: synchronise on the ground (arming and takeoff)
     drone0_ready = asyncio.Event()
     drone1_ready = asyncio.Event()
     start_event  = asyncio.Event()
 
-    # 2. Aşama: Havada Senkronizasyon (Offboard'a gecis oncesi hizalanma)
+    # Stage 2: synchronise in the air (align before switching to offboard)
     takeoff_drone0_ready = asyncio.Event()
     takeoff_drone1_ready = asyncio.Event()
     takeoff_start_event  = asyncio.Event()
@@ -43,13 +43,13 @@ async def main():
     async def wait_and_start():
         await drone0_ready.wait()
         await drone1_ready.wait()
-        send_intel("Her iki drone hazir! SENKRONIZE KALKIS KOMUTU VERILDI!")
+        send_intel("Both vehicles ready. Synchronised takeoff commanded.")
         start_event.set()
 
     async def wait_and_sync_midair():
         await takeoff_drone0_ready.wait()
         await takeoff_drone1_ready.wait()
-        send_intel("Her iki drone ayni irtifada! OFFBOARD DEVRIYE BASLATILIYOR!")
+        send_intel("Both vehicles at the same altitude. Starting offboard patrol.")
         takeoff_start_event.set()
 
     send_intel("Drone modulleri izole edilerek yukleniyor...")
@@ -57,7 +57,7 @@ async def main():
     drone0_mod = load_drone_module(0)
     drone1_mod = load_drone_module(1)
 
-    send_intel("Drone'lar baslatiliyor...")
+    send_intel("Starting vehicles...")
     
     await asyncio.gather(
         drone0_mod.run(drone0_ready, start_event, takeoff_drone0_ready, takeoff_start_event),

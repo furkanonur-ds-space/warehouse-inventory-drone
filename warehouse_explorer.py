@@ -12,7 +12,7 @@ import gz.transport13 as trans
 from gz.msgs10.laserscan_pb2 import LaserScan
 from gz.msgs10.image_pb2 import Image
 
-# ─── AYARLAR ────────────────────────────────────────────────
+# --- SETTINGS ----------------------------------------------
 LIDAR_TOPIC  = "/world/warehouse/model/x500_lidar_2d_0/link/link/sensor/lidar_2d_v2/scan"
 CAMERA_TOPIC = "/world/warehouse/model/x500_lidar_2d_0/link/base_link/sensor/camera/image"
 TARGET_QR    = sys.argv[1] if len(sys.argv) > 1 else "RAF-A1-KUTU-001"
@@ -28,7 +28,7 @@ MAX_PASS_DURATION   = 45.0
 END_MARKER_IDS = [2, 4, 6]
 NUM_CORRIDORS  = len(END_MARKER_IDS)
 
-# ─── UDP ISTIHBARAT ─────────────────────────────────────────
+# --- UDP REPORTING -----------------------------------------
 udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 
@@ -38,7 +38,7 @@ def send_intel(msg):
     print(full)
 
 
-# ─── DURUM DEGISKENLERI ─────────────────────────────────────
+# --- STATE VARIABLES ---------------------------------------
 latest_ranges = None
 current_altitude = 0.0
 sensors_ready = False
@@ -78,11 +78,11 @@ def on_image(msg):
         else:
             detected_aruco_ids = []
 
-        # DEBUG: her 10 frame'de bir diske kaydet (surekli yazmak yavaslatmasin)
+        # Debug: save every 10th frame, since writing every frame is slow
         if frame_count % 10 == 0:
             cv2.imwrite("/home/furk/autonomous_landing/debug_warehouse_cam.png", frame)
     except Exception as e:
-        send_intel(f"KAMERA HATASI: {e}")
+        send_intel(f"Camera error: {e}")
 
 
 async def get_altitude(drone):
@@ -125,7 +125,7 @@ async def check_qr():
     if qr_detected_data and not target_found:
         send_intel(f"QR OKUNDU: {qr_detected_data}")
         if qr_detected_data == TARGET_QR:
-            send_intel(f"★ HEDEF BULUNDU: {TARGET_QR} ★")
+            send_intel(f"TARGET FOUND: {TARGET_QR}")
             target_found = True
             return True
         qr_detected_data = None
@@ -180,7 +180,7 @@ async def fly_forward_pass(drone, expected_end_id):
             return "target_found"
 
         if check_corridor_end(expected_end_id):
-            send_intel(f"Koridor sonu markeri (ID:{expected_end_id}) goruldu!")
+            send_intel(f"Aisle-end marker (ID:{expected_end_id}) seen.")
             break
 
         if await emergency_check(drone):
@@ -189,24 +189,24 @@ async def fly_forward_pass(drone, expected_end_id):
 
         front, left, right = get_distances()
         if front < FALLBACK_FRONT_DIST:
-            send_intel(f"YEDEK GUVENLIK: onde engel ({front:.1f}m). Duruluyor.")
+            send_intel(f"Safety fallback: obstacle ahead ({front:.1f}m). Stopping.")
             break
 
-        # KORIDOR ORTALAMA: sol/sag mesafe farkina gore hafif yan duzeltme.
-        # Donus kararini HALA marker veriyor, bu sadece duz gitmeyi sagliyor.
+        # Aisle centring: a small lateral correction from the left/right range difference.
+        # The marker still decides when to turn; this only keeps the path straight.
         CENTERING_KP = 0.15
         MAX_CENTER_CORRECTION = 0.3
-        side_diff = right - left   # sagda daha fazla bosluk varsa pozitif -> saga kay
+        side_diff = right - left   # positive means more room on the right -> strafe right
         side_diff_clamped = min(max(side_diff, -3.0), 3.0)
         vy_correction = 0.0
-        if left < 5.0 and right < 5.0:  # sadece gercekten koridordaysak duzelt
+        if left < 5.0 and right < 5.0:  # only correct when actually inside an aisle
             vy_correction = max(min(side_diff_clamped * CENTERING_KP, MAX_CENTER_CORRECTION), -MAX_CENTER_CORRECTION)
 
         await drone.offboard.set_velocity_body(VelocityBodyYawspeed(FORWARD_SPEED, vy_correction, 0.0, 0.0))
         await asyncio.sleep(step)
         elapsed += step
 
-        # DEBUG: her 5 saniyede bir goruntude ne var raporla
+        # Debug: report what is in the frame every 5 seconds
         if int(elapsed * 10) % 50 == 0:
             send_intel(f"DEBUG t={elapsed:.1f}s gorulen ArUco ID'ler: {detected_aruco_ids}")
 
@@ -217,7 +217,7 @@ async def fly_forward_pass(drone, expected_end_id):
 
 
 async def shift_to_next_corridor(drone, duration):
-    send_intel("Sonraki koridora geciliyor...")
+    send_intel("Moving to the next aisle...")
     elapsed = 0.0
     step = 0.1
     while elapsed < duration:
@@ -243,7 +243,7 @@ async def run():
 
     drone = System()
     await drone.connect(system_address="udp://:14540")
-    send_intel("Drone baglantisi kuruluyor...")
+    send_intel("Connecting to the vehicle...")
     async for state in drone.core.connection_state():
         if state.is_connected:
             break
@@ -251,28 +251,28 @@ async def run():
     asyncio.create_task(get_altitude(drone))
     asyncio.create_task(get_health(drone))
 
-    send_intel("Sensorler bekleniyor...")
+    send_intel("Waiting for sensors...")
     while not sensors_ready:
         await asyncio.sleep(0.2)
 
-    send_intel("Kalkis basliyor...")
+    send_intel("Taking off...")
     await drone.action.arm()
     await drone.action.takeoff()
     while current_altitude < 1.4:
         await asyncio.sleep(0.1)
 
-    send_intel(f"Irtifa {current_altitude:.1f}m! Marker-tetiklemeli tarama basliyor...")
+    send_intel(f"Altitude {current_altitude:.1f}m. Starting marker-triggered scan...")
     await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
     try:
         await drone.offboard.start()
     except OffboardError as e:
-        send_intel(f"Offboard hatasi: {e}")
+        send_intel(f"Offboard error: {e}")
         return
 
     found = False
     for corridor_i in range(NUM_CORRIDORS):
         expected_id = END_MARKER_IDS[corridor_i]
-        send_intel(f"--- Koridor {corridor_i+1}/{NUM_CORRIDORS} taraniyor (bitis markeri: ID{expected_id}) ---")
+        send_intel(f"--- Scanning aisle {corridor_i+1}/{NUM_CORRIDORS} (end marker: ID{expected_id}) ---")
 
         result = await fly_forward_pass(drone, expected_id)
         if result == "target_found":
@@ -287,7 +287,7 @@ async def run():
     if found:
         send_intel(f"HEDEF BULUNDU: {TARGET_QR}! Iniliyor...")
     else:
-        send_intel("Tum koridorlar tarandi, hedef bu katta bulunamadi. Iniliyor...")
+        send_intel("All aisles scanned, target not found on this level. Landing...")
 
     await drone.offboard.stop()
     await drone.action.land()

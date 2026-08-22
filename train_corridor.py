@@ -8,10 +8,10 @@ from stable_baselines3.common.callbacks import EvalCallback
 MODEL_DIR = "corridor_models"
 os.makedirs(MODEL_DIR, exist_ok=True)
 
-# Egitim ortami (headless, hizli)
+# Training environment (headless, fast)
 train_env = make_vec_env(lambda: CorridorEnv(render_mode="none"), n_envs=1)
 
-# Degerlendirme ortami (egitim sirasinda periyodik test icin)
+# Evaluation environment, for periodic testing during training
 eval_env = CorridorEnv(render_mode="none")
 
 eval_callback = EvalCallback(

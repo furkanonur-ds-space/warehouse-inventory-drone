@@ -13,26 +13,26 @@ from mavsdk.offboard import VelocityBodyYawspeed, OffboardError
 import gz.transport13 as trans
 from gz.msgs10.image_pb2 import Image
 
-# --- DRONE KIMLIK AYARLARI ---
+# --- VEHICLE IDENTITY SETTINGS ---
 drone_idx   = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 DRONE_ID    = f"DRONE-{drone_idx + 1}"
 MAVSDK_PORT = 14540 + drone_idx
 GRPC_PORT   = 50051 + drone_idx
 CAMERA_TOPIC = f"/world/default/model/x500_{drone_idx}/link/base_link/sensor/camera/image"
 
-# --- SUNUCU AYARLARI ---
+# --- SERVER SETTINGS ---
 SERVER_URL = "http://127.0.0.1:5000/detect"
 last_send_time = 0
 
 def send_to_server(x, y):
-    payload = {"object": f"Kirmizi Kutu ({DRONE_ID})", "coordinates": {"x": x, "y": y}}
+    payload = {"object": f"Red box ({DRONE_ID})", "coordinates": {"x": x, "y": y}}
     try:
         response = requests.post(SERVER_URL, json=payload, timeout=1.0)
         if response.status_code == 200:
-            print(f"[{DRONE_ID}] Kirmizi kutu basariyla sunucuya iletildi!")
+            print(f"[{DRONE_ID}] Red box reported to the server.")
     except Exception as e:
-        # Sessizce gecmek yerine hatayi basalim ki neden gitmedigini gorelim
-        print(f"[{DRONE_ID}] Sunucu iletim hatasi: {e}")
+        # Print the error rather than failing silently, so the cause is visible
+        print(f"[{DRONE_ID}] Server transmission error: {e}")
 
 # --- UDP ISTIHBARAT ---
 udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -64,7 +64,7 @@ def on_image(msg):
         fh, fw = frame.shape[:2]
         cx_f, cy_f = fw // 2, fh // 2
 
-        # -- KIRMIZI KUTU TESPITI VE SUNUCU BILDIRIMI --
+        # -- RED BOX DETECTION AND SERVER NOTIFICATION --
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         m1  = cv2.inRange(hsv, np.array([0,   120, 70]), np.array([10,  255, 255]))
         m2  = cv2.inRange(hsv, np.array([170, 120, 70]), np.array([180, 255, 255]))
@@ -204,7 +204,7 @@ async def run(ready_event: asyncio.Event, start_event: asyncio.Event, takeoff_re
         send_intel("KRITIK HATA: Offboard moda gecilemedi, drone oldugu yerde asili kalacak!")
         return
 
-    # --- KARE DEVRİYE ---
+    # --- SQUARE PATROL ---
     send_intel("Kare devriye basliyor...")
     red_reported = False
     for i in range(4):

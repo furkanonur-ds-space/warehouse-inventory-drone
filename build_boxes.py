@@ -5,7 +5,7 @@ GZ_MODELS = os.path.expanduser('~/PX4-Autopilot/Tools/simulation/gz/models')
 BOX_SIZE = 0.3
 QR_PRINT_SIZE = 0.14   # matches the label size used on the reference warehouse
 PLATE_THICKNESS = 0.04
-LEVELS_Z = [0.35, 1.0, 1.65]   # plaka MERKEZ yukseklikleri
+LEVELS_Z = [0.35, 1.0, 1.65]   # shelf plate centre heights
 ISLAND_DEPTH = 1.6
 islands_x = [-4.0, 0.0, 4.0]
 box_y_positions = [-4.0, 0.0, 4.0]
@@ -15,7 +15,7 @@ box_counter = 0
 
 for island_i, cx in enumerate(islands_x):
     for level_i, plate_z in enumerate(LEVELS_Z):
-        # Kutu, plakanin USTUNE oturur
+        # The box sits on top of the plate
         box_center_z = plate_z + PLATE_THICKNESS/2 + BOX_SIZE/2
         for y in box_y_positions:
             for face in ['left', 'right']:
@@ -84,7 +84,7 @@ for island_i, cx in enumerate(islands_x):
                 with open(os.path.join(model_dir, 'model.sdf'), 'w') as f:
                     f.write(sdf)
 
-                # Kutu, plakanin ust yuzeyinde, disa bakan kenara YAKIN dursun
+                # Sit the box on the plate, close to the outward-facing edge
                 box_edge_offset = ISLAND_DEPTH/2 - BOX_SIZE/2 - 0.02
                 x_offset = -box_edge_offset if face == 'left' else box_edge_offset
                 world_x = cx + x_offset

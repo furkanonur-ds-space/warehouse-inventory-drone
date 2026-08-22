@@ -1,7 +1,7 @@
 """
-TANI TESTI: Drone sadece duz ileri ucar (hicbir duzeltme yok).
+Diagnostic test: the vehicle flies straight forward with no correction at all.
 Gercek Gazebo konumunu (ground truth) her 0.5 saniyede kaydeder.
-Amac: kaymanin gercekten oldugunu ve ne kadar oldugunu OLCMEK.
+Purpose: measure whether drift actually occurs, and how much.
 """
 import os
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
@@ -33,14 +33,14 @@ def get_ground_truth_pose():
         if x and y:
             return float(x.group(1)), float(y.group(1))
     except Exception as e:
-        print(f"Pose okuma hatasi: {e}")
+        print(f"Pose read error: {e}")
     return None
 
 
 async def run():
     drone = System()
     await drone.connect(system_address="udp://:14540")
-    print("Baglaniliyor...")
+    print("Connecting...")
     async for state in drone.core.connection_state():
         if state.is_connected:
             break
@@ -50,15 +50,15 @@ async def run():
     await drone.action.takeoff()
     await asyncio.sleep(8)
 
-    print("Offboard baslatiliyor...")
+    print("Starting offboard...")
     await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
     try:
         await drone.offboard.start()
     except OffboardError as e:
-        print(f"Offboard hatasi: {e}")
+        print(f"Offboard error: {e}")
         return
 
-    print("\n--- SADECE ILERI UCUS BASLIYOR (hicbir duzeltme yok) ---")
+    print("\n--- STRAIGHT FORWARD FLIGHT, NO CORRECTION ---")
     print("t(s)  |  X konum  |  Y konum  |  Y_kayma (baslangica gore)")
     print("-" * 60)
 
