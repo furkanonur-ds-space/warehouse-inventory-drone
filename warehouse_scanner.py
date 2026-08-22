@@ -3,8 +3,8 @@ Autonomous Warehouse Inventory Scanner, C27 sensor configuration.
 
 Scans a warehouse using a UAV with a single front-facing high resolution
 camera, three tracking cameras and a forward TOF sensor. No GPS is used at any
-point: localization relies on optical flow dead reckoning fused by the PX4 EKF2
-estimator.
+point: localization relies on visual odometry from the tracking cameras, fed to
+the PX4 EKF2 estimator as an external vision source.
 
 Because the scanning camera faces forward rather than sideways, the vehicle
 must turn to face each shelf and fly sideways along it. Each shelf face
@@ -83,7 +83,11 @@ DOWN_CAM_HFOV_DEG = 90.0
 
 # ArUco markers on the floor carry known positions, so a sighting gives an
 # absolute fix that can be compared against the dead-reckoned estimate.
-ARUCO_DICT = cv2.aruco.DICT_5X5_100
+# Must match the dictionary used by generate_markers.py, which writes the
+# marker textures into the Gazebo models. A mismatch here is silent: the
+# detector simply never matches, and on_down_image returns without a word,
+# so drift correction quietly does nothing.
+ARUCO_DICT = cv2.aruco.DICT_4X4_50
 
 OUTPUT_JSON = os.path.expanduser("~/autonomous_landing/inventory_scanned.json")
 
@@ -666,7 +670,7 @@ async def run():
     print(f"  Shelf faces    : {len(ISLAND_X) * 2}")
     print(f"  Shelf levels   : {len(FLIGHT_Z)}")
     print(f"  Waypoints      : {len(route)}")
-    print("  Localization   : optical flow with EKF2, GPS disabled")
+    print("  Localization   : visual odometry with EKF2, GPS disabled")
     print("  Drift correction: ArUco floor markers, offset applied to setpoints")
     print("=" * 68)
 
@@ -755,7 +759,7 @@ async def run():
         json.dump({
             "scan_date": datetime.now().isoformat(timespec="seconds"),
             "sensor_configuration": "C27, single front-facing scanning camera",
-            "localization": "optical flow, no GPS",
+            "localization": "visual odometry, no GPS",
             "total_detected": len(inventory),
             "waypoints_completed": f"{reached}/{len(route)}",
             "marker_corrections": marker_events,
