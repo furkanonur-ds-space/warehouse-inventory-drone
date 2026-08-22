@@ -236,14 +236,29 @@ def on_down_image(msg):
             last_correction_time[0] = now
 
             before = math.hypot(drift_offset["n"], drift_offset["e"])
-            # Blend rather than jump, so a single noisy sighting cannot throw
-            # the vehicle off course mid-aisle.
-            # Only accept drift corrections when the drone is perfectly hovering.
-            # If the drone is moving (pitched/rolled), the camera angle calculates fake drift.
+            # Converge on the measured error rather than accumulating it.
+            #
+            # error_n is the whole discrepancy between the marker fix and the
+            # estimator, measured fresh every sighting. The estimator bias does
+            # not shrink when the offset changes -- the offset only shifts the
+            # setpoints -- so the same error is measured again next time. An
+            # earlier version did `drift_offset += alpha * error`, which summed
+            # that repeated measurement: it happened to be right after exactly
+            # two sightings and then overshot without bound. It went unnoticed
+            # because the simulated VIO reports the true pose, so the error
+            # being accumulated was always about zero.
+            #
+            # Blending towards the target rather than jumping to it keeps a
+            # single noisy sighting from throwing the vehicle off course, and
+            # settles at the error itself, which is what corrected() needs.
+            #
+            # Corrections are only taken while hovering. In motion the airframe
+            # pitches, the downward camera tilts with it, and the geometry below
+            # reads that tilt as position error.
             if is_settled:
                 alpha = 0.5
-                drift_offset["n"] += alpha * error_n
-                drift_offset["e"] += alpha * error_e
+                drift_offset["n"] += alpha * (error_n - drift_offset["n"])
+                drift_offset["e"] += alpha * (error_e - drift_offset["e"])
             else:
                 pass # Ignoring marker reading because drone is tilted/moving
             after = math.hypot(drift_offset["n"], drift_offset["e"])
