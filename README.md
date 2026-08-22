@@ -15,15 +15,17 @@ Latest verified run, 2026-08-22:
 | Metric | Value |
 |---|---|
 | Boxes decoded | 54 / 54 |
-| Waypoints reached | 35 / 36 |
-| Final drift offset | 0.097 m |
+| Waypoints reached | 36 / 36 |
+| Marker fixes applied | 82, across all eight markers |
+| Marker fix error | 0.002 m min, 0.043 m median, 0.147 m max |
+| Final drift offset | 0.008 m |
 | Flight time | about 9 minutes of simulated time |
 
-One waypoint reported a timeout instead of an arrival. A timeout means the leg
-ran past its time budget, not that it was skipped: the setpoint keeps advancing
-and the camera keeps being polled for the whole leg. Decoding is therefore
-independent of whether arrival is confirmed within the budget, which is why the
-run still decoded every box.
+The final drift offset is worth reading carefully. Simulated visual odometry
+reports the true pose and never drifts, so a correct implementation should
+converge on approximately zero. It settles at 0.008 m. An earlier version of
+the correction reached 0.332 m on an otherwise identical run, and every
+centimetre of that was error the correction had invented rather than removed.
 
 ## Localization: no GPS
 
@@ -37,7 +39,7 @@ told not to fuse GPS even if one appears.
 | Three tracking cameras | Visual odometry, simulated by Gazebo's OdometryPublisher and delivered to PX4 as external vision |
 | IMU (accelerometer + gyroscope) | Attitude and short-term motion, fused by EKF2 |
 | Barometer | Secondary height reference |
-| ArUco floor markers | Ground-truth reference points at known coordinates, intended for periodic drift correction (see Known issues) |
+| ArUco floor markers | Ground-truth reference points at known coordinates, used for periodic drift correction (see Drift correction) |
 
 The relevant parameters live in the custom airframe file
 (`px4_config/4022_gz_x500_scanner`):
@@ -161,31 +163,65 @@ Because the vehicle pitches to fly, the camera tilts and introduces a false
 bearing and elevation. Since the shelf grid is known, each estimate is snapped
 to the nearest shelf face and flight level, which removes that error.
 
+## Drift correction
+
+Eight ArUco markers sit on the floor at the aisle ends, at positions written
+out with the world into `marker_map.json`. A sighting gives an absolute fix,
+and the difference between that fix and the estimator is the accumulated error.
+
+PX4 offers no way to reset the estimator through MAVSDK, so the correction
+lives here instead: an offset that is subtracted from every commanded setpoint.
+The estimator keeps its own mistaken idea of where the vehicle is, and the
+vehicle still arrives where it was asked to go.
+
+Corrections are only taken while hovering. In motion the airframe pitches and
+the downward camera tilts with it, and the geometry reads that tilt as position
+error, so each leg ends with a 1.5 second settle during which sightings count.
+
+### Why it is tested offline
+
+This is the part simulation cannot check. Gazebo's `OdometryPublisher` reports
+the model's true pose, so the simulated VIO is exact and never drifts. The
+correction has nothing to correct, and a flight can never show whether it would
+cancel a real error or add one.
+
+Neither knob the plugin offers helps. `xyz_offset` is a mounting offset that
+rotates with the body, so it turns yaw into apparent translation and tumbles
+the vehicle before takeoff. `gaussian_noise` is zero-mean, so EKF2 averages it
+away and no error accumulates.
+
+`test_drift_correction.py` therefore drives the geometry directly, with no
+simulator. It projects where a marker must appear given a true pose, renders
+that frame, hands it to `on_down_image` alongside a deliberately wrong
+estimate, and checks the recovered offset. Eight cases cover zero error, three
+directions, two yaw angles, a second marker id, and one error beyond the 2 m
+plausibility gate.
+
+That test earned its place immediately. It found that the correction summed its
+own measurement instead of converging on it: the offset was right after exactly
+two sightings and then overshot without bound. Simulation could never have
+surfaced it, because the quantity being accumulated was always about zero. On
+real hardware, where VIO bias persists, it would have driven the vehicle away
+from the error it was meant to remove.
+
+```sh
+python3 test_drift_correction.py
+```
+
 ## Known issues
 
-**ArUco drift correction is not functional.** All eight marker models reference
-their texture as `marker.png`, the same basename in every model directory.
-Gazebo's texture cache treats these as one asset, so every marker in the world
-renders with marker 1's texture. Measured directly: with the vehicle 0.02 m
-from marker 7 and 0.06 m from marker 8, the downward camera read id 1 in both
-cases, 0 of 15 detections correct.
+**Gazebo memory growth.** `gz sim` grows steadily with every rendered frame.
+At 30 Hz on all four cameras a full scan reached 26 GB of 27 GB, at which point
+the machine began swapping and could no longer service the MAVLink link. MAVSDK
+then failed to send a setpoint, the offboard stream stopped, and PX4 entered
+failsafe and dropped the vehicle. It happened near the end of the route every
+time, which reads like a fault at a particular waypoint but is purely elapsed
+time.
 
-The consequence is contained rather than harmful. Sightings at the wrong
-location disagree with the estimate by more than the 2 m plausibility gate and
-are rejected, so no bad correction is applied. Visual odometry drift is small
-enough (0.097 m over a full scan) that the scan succeeds without the
-correction. The fix is the one already applied to the box textures: give each
-marker a unique filename.
-
-This is the same failure that once cost significant debugging time on the
-boxes. Every box model initially stored its texture as `qr.png`, so all 54
-boxes rendered with the first box's QR code; detection was 1 out of 54 and the
-single decoded value repeated everywhere. Unique filenames (`qr_001.png`,
-`qr_002.png`, and so on) fixed it.
-
-**Gazebo memory growth.** `gz sim` grows to tens of gigabytes of resident
-memory over a full scan and can be killed by the system or become
-unresponsive. Restart the simulator between runs.
+Two changes keep it clear of that ceiling: the camera update rates in
+`build_scanner_drone.py`, and `send_setpoint()`, which survives a single failed
+send rather than letting the exception stop the setpoint loop. Restart the
+simulator between runs regardless.
 
 ## Files
 
@@ -193,11 +229,12 @@ unresponsive. Restart the simulator between runs.
 |---|---|
 | `warehouse_scanner.py` | Main scan routine: route execution, QR decoding, inventory export |
 | `verify_setup.py` | Checks the GPS-free claim against the running system before a measurement run |
+| `test_drift_correction.py` | Drives the drift correction geometry with synthetic frames, no simulator |
 | `build_islands.py` | Generates the three double-sided shelf island models |
 | `build_boxes.py` | Generates 54 box models, each with a unique QR texture |
 | `build_v2_world.py` | Assembles the Gazebo world and writes the ArUco marker map |
 | `build_scanner_drone.py` | Builds the `x500_scanner` vehicle model with the C27 camera set |
-| `generate_markers.py` | Generates the eight ArUco floor marker textures |
+| `generate_markers.py` | Generates the eight ArUco floor marker models, each with a unique texture filename |
 | `warehouse_config.json` | Warehouse geometry: corridors, islands, flight levels |
 | `px4_config/4022_gz_x500_scanner` | PX4 airframe definition |
 
