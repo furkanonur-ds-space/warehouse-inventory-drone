@@ -1,0 +1,427 @@
+# Ortak depo simülasyon ortamı -- yapılandırma
+# Tüm ölçüler metre, açılar radyan.
+#
+# ===========================================================================
+# EKSEN DÜZENİ -- ÖNCE BUNU OKU
+# ===========================================================================
+# Bu dosya "config çerçevesinde" yazılır: raf sıraları X boyunca uzanır,
+# koridorlar Y'de ayrılır (eski `warehouse test` projesinin düzeni; gen_world
+# içindeki tüm yerleşim mantığı bu çerçevede yazılmış, dokunulmadı).
+#
+# gen_world.py, poz emisyonu sırasında `world_yaw` kadar TEK bir dönüşüm
+# uygular ve dünyayı Furkan'ın çerçevesine çevirir:
+#
+#     world_yaw: -90  ->  (x_c, y_c) -> (x_w, y_w) = (y_c, -x_c)
+#
+# Yani config'teki `aisles[].y_center` doğrudan dünyadaki koridor X merkezi
+# olur (-8.500, -4.215, -0.565, 2.450 -- koridorlar daraldığı için artık
+# Furkan'ın eski marker_map.json'ından FARKLI; haritayı gen_world.py
+# yeniden üretiyor), config'teki göz ekseni (X) ise dünyada Y boyunca uzar
+# (koridorlar Y'de ilerler, drone bu yönde uçar).
+#
+# İSTİSNA: `codes.aisle_marker.positions` ve `spawn.pose` zaten DÜNYA
+# koordinatındadır, dönüşümden geçmez. Sebep: ikisi de Furkan'ın dosyalarından
+# birebir kopyalandı, doğrulanabilir kalsınlar diye çevrilmiyorlar.
+#
+# ===========================================================================
+# OKUNABİLİRLİK BÜTÇESİ (tools/gen_labels.py --budget ile doğrulanır)
+# ===========================================================================
+#   Bir kodun çözülebilmesi için modül (en küçük kare/çubuk) başına >= 3 px
+#   gerekir; 4+ px rahat bölgedir.
+#   px_per_m(d) = genislik_px / (2 * d * tan(hfov/2))
+#
+#   Koridor genişliği artık SABİT DEĞİL (bkz. racking.aisles): 2.40 m'den
+#   0.50 m'ye daralıyor, yani okuma mesafesi de koridordan koridora değişiyor.
+#   Bütçeyi belirleyen EN GENİŞ koridordur -- orada kamera raf yüzüne en
+#   uzakta durur. Yan kameralar 1920x1080, hfov 1.0472:
+#       px_per_m(1.2) = 1920 / (2 * 1.2 * 0.57735) = 1385.6 px/m   (koridor 1)
+#   Dar koridorlarda mesafe kısaldığı için modül başına px ARTAR; orada sorun
+#   çözünürlük değil, kadraja sığma (0.25 m'de dikey kadraj 0.16 m, etiket
+#   yığını 0.25 m -- yani koridor 4'te etiket kadraja sığmaz).
+#
+#   DİKKAT: `code` ölçüleri sadece kodun kendisidir, quiet zone (sessiz alan)
+#   hariçtir. Etiketin toplam boyutu `label`dır. Kodu etiket boyutuna
+#   eşitlemek quiet zone'u yok eder.
+#
+#   Güncel sayılar için: .venv/bin/python tools/gen_labels.py --budget
+
+seed: 20260818
+
+# Config çerçevesinden dünya çerçevesine dönüş (yukarıdaki nota bak).
+world_yaw: -90
+
+# ---------------------------------------------------------------- bina
+# Gerçek bir dağıtım deposu ölçüsü. Serbest yükseklik 10 m (tipik modern
+# depo 8-12 m); eski projedeki 20 m yüksek-raflı bir tesise aitti, bizim
+# 5 m'lik raflarımızla orantısızdı.
+#
+# `length` config-X (göz ekseni) -> dünyada Y boyu
+# `width`  config-Y (koridor ayrım ekseni) -> dünyada X boyu
+building:
+  # Raflar binanın ortasında bir ada gibi duruyor, kenarlarda geniş boş alan
+  # var: dünyada Y'de raf koşusu ±8.1, duvar ±24.0 -> her uçta 15.9 m;
+  # X'te raf bloğu -10.8..3.8 (koridorlar daraldı, blok kısaldı),
+  # duvar ±28.0 -> 17.2 ve 24.2 m.
+  # Büyük bir dağıtım merkezinin sevkiyat/mal kabul alanları bu ölçüde olur.
+  #
+  # DİKKAT: tavan lambası menzili 14 m (lighting.attenuation_range) ve
+  # armatürler yalnız koridorların üstünde. Raf bölgesi aydınlık, çeperler
+  # karanlık kalır. Tarama raf yüzünde olduğu için sorun değil, ama boş
+  # alanda uçarken görüntü karanlık görünürse sebebi bu.
+  length: 48.0          # dünyada Y (göz ekseni boyu)
+  width: 56.0           # dünyada X (koridorların dizildiği yön)
+  height: 10.0
+  wall_thickness: 0.2
+
+# ------------------------------------------------------------- raflama
+# GERÇEK PALET RAFI (selective pallet racking) ölçüleri:
+#   - göz genişliği 2700 mm: standart kiriş boyu, 3 adet Euro palet (800 mm)
+#     yan yana + parmak payı. (Diğer standart boylar: 1825 / 2300 / 3300 mm.)
+#   - derinlik 1100 mm: Euro paleti (1200x800) 1200 tarafı içeri girecek
+#     şekilde depolanır, palet kirişlerin üstüne 50'şer mm taşar. Standart.
+#   - dikme 5000 mm, kiriş adımı 1700 mm: palet 144 + yük ~1350 + 200 mm
+#     kaldırma payı. Üç seviyeli standart yerleşim.
+#   - dikme/kiriş profil kalınlığı 100 mm.
+racking:
+  bay_width: 2.70
+  bay_count: 6          # 6 x 2.70 = 16.2 m raf koşusu (dünyada Y: -8.1 .. 8.1)
+  depth: 1.10
+  upright_height: 5.00
+  frame_thickness: 0.10
+  # Kiriş üst yüzeyleri (yükün oturduğu kot). En alt seviye 0.50 m: gerçek
+  # depolarda alt kiriş genellikle 0.3-0.5 m'ye kurulur. Bu kot aynı zamanda
+  # eski projede ÖLÇÜLMÜŞ bir kısıtı da karşılıyor: L1 taraması 0.80 m'nin
+  # altına inince yer etkisi + kadraj kayması başlıyordu.
+  level_heights: [0.50, 2.20, 3.90]
+  x_origin: -8.10       # göz ekseninin başlangıcı (dünyada Y = +8.1 ucu)
+
+  # ---------------------------------------------------------------------
+  # YERLEŞİM -- DARALAN KORİDORLAR (dünya X'te)
+  #
+  # Koridor açıklığı artık sabit değil: ilk koridor 2.40 m, son koridor
+  # 0.50 m, aradakiler doğrusal olarak daralıyor.
+  #
+  #   w_i = 2.40 - i * (2.40 - 0.50) / 3   ->   2.40  1.77  1.13  0.50
+  #
+  # Ada kalınlığı (2 x 1.10 = 2.20 m) sabit kaldığı için koridor adımı da
+  # daralıyor: 4.60 / 3.97 / 3.33 / 2.70. Yani Furkan'ın eski sabit 4.6 m
+  # adımı ARTIK GEÇERLİ DEĞİL -- koridor merkezleri aşağıdaki `aisles`
+  # listesinden okunmalı.
+  #
+  # Blok, koridor 1'in merkezi -8.50'de KALACAK şekilde çapalandı. Böylece
+  # kalkış noktası (spawn -8.5, -9.0) ve 1/2 numaralı ArUco markörler
+  # yerinde kalıyor; daralma bloğun diğer ucuna doğru birikiyor. Raf bloğu
+  # -10.80 .. 3.80 (eskiden -10.80 .. 7.60), yani 14.60 m; duvar +-28.0.
+  #
+  #   -10.8|A|-9.7   [k1 -8.500, 2.40]   -7.3|B|-6.2|C|-5.1
+  #   [k2 -4.215, 1.77]   -3.33|D|-2.23|E|-1.13
+  #   [k3 -0.565, 1.13]   0.0|F|1.1|G|2.2
+  #   [k4 2.450, 0.50]   2.7|H|3.8
+  #
+  # 8 taranabilir raf yüzü: 2 dış sıra (A, H) + 3 çift yüzlü ada (BC, DE, FG).
+  #
+  # ARAÇ AÇIKLIĞI (x500 gövde yarı-açıklığı 0.324 m: rotor göbeği 0.174 +
+  # pervane yarıçapı ~0.150). Koridor merkezinde her yana kalan pay:
+  #
+  #   k1 2.40 -> 0.876 m    rahat
+  #   k2 1.77 -> 0.561 m    rahat
+  #   k3 1.13 -> 0.241 m    çok dar; waypoint toleransı 0.40 m'den KÜÇÜK
+  #   k4 0.50 -> -0.074 m   ARAÇ SIĞMIYOR
+  #
+  # Bu bilinçli: drone boyutu değiştirilmedi, koridor onun altına indi.
+  # Koridor 4 uçulamaz bir raf yüzü çifti (G, H) olarak duruyor.
+  # ---------------------------------------------------------------------
+  rows:
+    - {id: "A", y0: -10.80, facing: +1, aisle: 1}   # dış sıra, koridor 1'e bakar
+    - {id: "B", y0:  -7.30, facing: -1, aisle: 1}   # ada 1, koridor 1'e bakar
+    - {id: "C", y0:  -6.20, facing: +1, aisle: 2}   # ada 1, koridor 2'ye bakar (B ile sırt sırta)
+    - {id: "D", y0:  -3.33, facing: -1, aisle: 2}   # ada 2, koridor 2'ye bakar
+    - {id: "E", y0:  -2.23, facing: +1, aisle: 3}   # ada 2, koridor 3'e bakar
+    - {id: "F", y0:   0.00, facing: -1, aisle: 3}   # ada 3, koridor 3'e bakar
+    - {id: "G", y0:   1.10, facing: +1, aisle: 4}   # ada 3, koridor 4'e bakar
+    - {id: "H", y0:   2.70, facing: -1, aisle: 4}   # dış sıra, koridor 4'e bakar
+
+  # `width` net açıklık (iki raf yüzü arası), `y_center` orta çizgi.
+  # Her ikisi de yukarıdaki `rows` ile birebir tutarlı olmak ZORUNDA;
+  # gen_world.py üretim sırasında bunu doğruluyor ve tutmazsa durduruyor.
+  aisles:
+    - {id: 1, y_center: -8.500, width: 2.40}
+    - {id: 2, y_center: -4.215, width: 1.77}
+    - {id: 3, y_center: -0.565, width: 1.13}
+    - {id: 4, y_center:  2.450, width: 0.50}
+
+# --------------------------------------------------------------- kutular
+# Avrupa modüler karton serisi (600x400 mm temel modülünden türetilir --
+# EUR palet üstünde artık alan bırakmadan istiflenen gerçek ölçüler).
+# dims: [X genişlik (göz ekseni), Y derinlik (raf derinliği), Z yükseklik]
+#
+# KORİDOR DARALMASININ KUTULARA YANSIMASI
+# ---------------------------------------
+# Bir kutu, rafa konabilmek için önce KORİDORDAN geçmek zorunda. Kısıt
+# kutunun en büyük yatay ölçüsü:
+#
+#     max(dx, dy) + aisle_clearance <= koridorun net açıklığı
+#
+# gen_world.py bunu her sıra için o sıranın baktığı koridora göre uyguluyor
+# (rows[].aisle -> aisles[].width), yani dar koridorlardaki raflar kendi
+# kendine küçük kutularla doluyor. 0.15 m payla:
+#
+#   k1 2.40 -> 2.25 m sınır : XS S M L
+#   k2 1.77 -> 1.62 m sınır : XS S M L
+#   k3 1.13 -> 0.98 m sınır : XS S M L
+#   k4 0.50 -> 0.35 m sınır : yalnız XS
+#
+# XS bu yüzden eklendi ve ölçüleri iki alt sınırın arasına sıkışıyor:
+#   dx >= 0.32  konum barkodu 300 mm geniş, ön yüze sığması lazım
+#   dx <= 0.35  koridor 4'ten geçebilmesi lazım
+#   dz >= 0.28  etiket yığını 150 + 10 + 90 = 250 mm
+# Yani koridor 4, üstüne mevcut etiket setini basabileceğimiz EN DAR
+# koridor; daha da daraltmak etiketleri de küçültmeyi gerektirir.
+#
+# En dar kutu (XS) ön yüzü 320x280 mm; etiket yığını (150 + 10 + 90 = 250 mm)
+# oraya 30 mm payla sığıyor -- etiket boyutlarını büyütürken bu kısıta bak.
+boxes:
+  fill_probability: 1.00
+  per_slot: [3,3]             # 3 x 0.80 = 2.40 m <= 2.70 m göz genişliği
+  aisle_clearance: 0.15       # kutuyu koridordan geçirirken bırakılan pay
+  sizes:
+    - {name: "XS", dims: [0.32, 0.26, 0.28]}
+    - {name: "S", dims: [0.40, 0.30, 0.30]}
+    - {name: "M", dims: [0.60, 0.40, 0.40]}
+    - {name: "L", dims: [0.80, 0.60, 0.50]}
+  front_gap: 0.02
+
+# ---------------------------------------------------------------- kodlar
+codes:
+  texture_px_per_m: 2400
+  max_texture_px: 768
+
+  # -------------------------------------------------------------------
+  # Kutu sevkiyat etiketi -- yan kameraların ana hedefi.
+  #
+  # GERÇEKLİK NOTU (bilinçli taviz): etiketin BOYUTU gerçek -- 100x150 mm,
+  # dünyada en yaygın termal sevkiyat etiketi (4"x6"). Ama üstündeki QR
+  # gerçek bir sevkiyat etiketindekinden (tipik 30-50 mm) büyük: 70 mm.
+  # Sebep açısal çözünürlük: 50 mm'lik bir QR (2.0 mm/modül) 1.2 m'den
+  # 2.77 px/modül eder, yani okunmaz -- kod seçimiyle veya ışıkla
+  # düzeltilebilecek bir şey değil.
+  # Bu taviz gerçek dünyada da yapılıyor: drone ile envanter sayan depolar
+  # (Verity, Corvus, Gather AI) rafları büyütülmüş kodlarla yeniden
+  # etiketliyor, tam da bu yüzden.
+  box_label:
+    # Etiket, QR'ın quiet zone'una göre boyutlandırılmış: 70 mm kod + her
+    # kenarda 4 modül (11.2 mm) -> 92.4 mm alt sınır, 95 mm seçildi.
+    #
+    # Önceden 100 x 150 mm'ydi (4" x 6" termal sevkiyat etiketi) ve altında
+    # okunabilir SKU şeridi vardı. İkisi de barkodu QR'dan uzaklaştırmak
+    # içindi: etiket ne kadar uzunsa, altına gelen barkod o kadar aşağıda
+    # kalıyor. En dar koridorda (G/H) kameranın dikey yarı-çerçevesi 6.5 cm,
+    # barkod ise QR'ın 12.9 cm altındaydı -- kadrajın tamamen dışında, ve
+    # 2026-09-03 koşusunda G yüzünün 54 kutusunun tamamı, H'nin 13'ü tam bu
+    # yüzden okunamadı. Etiketi kısaltmak ve caption'ı kaldırmak düşüşü
+    # 6.5 cm'ye indiriyor.
+    #
+    # QR'ın kutu üzerindeki YÜKSEKLİĞİ değişmiyor: gen_world QR sembolünü
+    # kutu merkezinin 61 mm üstünde tutuyor, ki scanner/layout.json'daki
+    # uçuş irtifaları oradan türetiliyor.
+    label: [0.100, 0.095]
+    code: 0.070               # QR kenarı, quiet zone hariç -> 2.80 mm/modül
+    qr_version: 2             # 25x25 modül
+    qr_error_correction: "M"
+    caption_height: 0.0       # okunabilir şerit yok; yeri barkoda gidiyor
+
+  # Kutu barkodu (Code128), kutunun ön yüzünde QR'ın altında.
+  # 300x90 mm: gerçek depo etiketlerinin ölçüsü (250-400 mm arası tipiktir;
+  # mesafeden okunsun diye zaten büyük basılırlar).
+  #
+  # Yük, kutunun 4 haneli sıra numarası: "0001".."0432". Kutuya özel, QR gibi,
+  # ama QR'ın taşıdığı hiçbir alanı tekrar etmiyor -- QR adresi ve SKU'yu
+  # söyler, barkod kutunun kendi numarasını. İkisi farklı şeyler taşır ve biri
+  # diğerinden türetilemez; bir koşunun "QR okundu, barkod okunmadı"
+  # diyebilmesinin sebebi bu.
+  #
+  # 4 hane, 3'ten ucuz olduğu için: Code128'in C modu rakam ÇİFTLERİNİ tek
+  # sembolde kodlar, dolayısıyla 4 hane 57 modül eder, 3 hane 68, 5 hane 79.
+  # SKU'nun rakamları kullanılamazdı: ne ilk ne son 4 hanesi 432 kutuda tekil.
+  box_placard:
+    # En, dar koridorun kadrajına göre seçildi. Orada kamera raftan 0.227 m
+    # uzakta ve gördüğü alanın TAMAMI 0.262 m: 263 mm'lik çubuklar karenin
+    # genişliği kadardı, yani 1D kod hiçbir zaman tamamen kadraja girmiyordu.
+    # 2026-09-03 koşusunda G yüzünün 54 kutusundan 3'ü okundu; H'de barkod
+    # kadrajın %69'unu kaplıyordu ve 54'ün 35'i okundu.
+    #
+    # 190 mm, 4 haneli yükün 57 modülüyle birlikte modülü 3.33 mm'de
+    # bırakıyor -- eski 5 haneli / 263 mm'lik düzenle aynı. Okunabilirlik hiç
+    # değişmeden barkod %28 daralıyor ve G kadrajının %100'ü yerine %73'ünü
+    # kaplıyor.
+    # 2026-09-04: 190 -> 166 mm. Ölçüm, koşunun kendi okumalarından:
+    #
+    #   * zbar'ın GÖRÜNEN sessiz alan ihtiyacı ~2 modül, 7.5 değil. A yüzünde
+    #     çubuklarla kadraj kenarı arasında 4 px beyaz kalmışken bile çözdü.
+    #     Yani etiketin tamamının kadraja girmesi gerekmiyor; kadrajın taşıması
+    #     gereken şey çubuklar + iki yanda ~2 modül.
+    #   * G'nin sorunu çözünürlük değil. G depodaki en yüksek çözünürlüğe sahip
+    #     yüz -- 11.03 px/modül -- ve en kötü sonucu veriyor: 31/54. En düşük
+    #     çözünürlüklü B (1.94 px/modül) 54/54 okuyor. Fark kadraj: G'de kamera
+    #     262 mm görüyor, 190 mm çubuk + 13 mm sessiz alan 203 mm yer istiyor,
+    #     geriye 59 mm'lik bir pencere kalıyor ve araç kareler arasında 148 mm
+    #     ilerliyor. Kare başına %40.
+    #
+    # 166 mm o pencereyi 84 mm'ye çıkarıyor, kare başına %57. Bedeli her yüzde
+    # çözünürlük ve bağlayıcı olan B: 1.94 -> 1.70 px/modül. Elimizdeki tek
+    # sert veri 1.94'ün rahat çalıştığı; altı ölçülmedi. B bozulursa bu satır
+    # geri alınır.
+    #
+    # Beyaz alan 240 mm'de KALIYOR. Sessiz alan 37 mm'ye çıkıyor ve bu bedava:
+    # kadraja girmesi gereken kısım zaten ~2 modül, gerisi sadece marj.
+    label: [0.240, 0.026]     # çubuklar + 37 mm sessiz alan, 1 mm alt/üst
+    bar_width: 0.166          # -> 57 modülde 2.92 mm/modül
+    bar_height: 0.024
+    caption_height: 0.0
+
+  # -------------------------------------------------------------------
+  # Koridor başı ArUco markörleri -- Furkan'ın sapma düzeltmesi için.
+  # DICT_5X5_100, id 1..8, 500 mm (gerçek AGV/drone zemin markörleri
+  # 300-500 mm arasıdır).
+  #
+  # positions DÜNYA koordinatıdır, world_yaw dönüşümünden GEÇMEZ:
+  # ref/furkan/marker_map.json ile birebir aynı kalsın diye.
+  #
+  # UYARI: Furkan'ın README'sine göre ArUco sapma düzeltmesi henüz
+  # uygulanmadı ve x500_scanner'da aşağı bakan kamera yok -- bu markörler
+  # şu an DEKORATİF. Kullanılacaksa alt kamera eklenmesi gerekir.
+  aisle_marker:
+    dictionary: "DICT_5X5_100"
+    label: [0.600, 0.600]     # 500 mm markör + 50 mm quiet zone çerçevesi
+    code: 0.500               # -> 5x5 veri + 1 modül çerçeve = 7 modül, 71.4 mm/modül
+    caption_height: 0.0
+    #
+    # KONUM DEĞİŞTİ (Furkan'ın marker_map.json'ı y=+-8.0 diyor, biz +-9.0):
+    # markörün işi koridora GİRMEDEN ÖNCE konum düzeltmesi vermek. +-8.0
+    # raf koşusunun ucuyla (+-8.1) neredeyse aynı hizada; drone markörü
+    # ancak koridorun içine girdikten sonra görürdü, yani düzeltme geç
+    # kalırdı. +-9.0 raf ucundan 0.9 m dışarıda, çapraz koridorun içinde
+    # (duvar +-12.0, yani 3.0 m pay var).
+    #
+    # Yan etki, iyi tarafta: koridor 1'in güney markörü (id 1) tam kalkış
+    # noktasının altında (spawn -8.5, -9.0). Alt kamera eklenirse araç
+    # havalanır havalanmaz bilinen bir kodu görür.
+    #
+    # Furkan'ın tarafında iki şey gerekiyor:
+    #   - marker_map.json yenilenmeli -> out/marker_map.json olarak
+    #     gen_world.py tam onun biçiminde üretiyor, kopyalaması yeter.
+    #   - Y_SOUTH, Y_NORTH = -8.0, 8.0  ->  -9.0, 9.0, yoksa rota
+    #     markörlerin üstünden hiç geçmez.
+    #
+    # x'ler koridor merkezleridir ve koridorlar daraldığı için 3..8 numaralı
+    # markörler taşındı (1 ve 2 yerinde: koridor 1 çapalı).
+    positions:                # [id, x_dünya, y_dünya]
+      - [1, -8.500, -9.0]
+      - [2, -8.500,  9.0]
+      - [3, -4.215, -9.0]
+      - [4, -4.215,  9.0]
+      - [5, -0.565, -9.0]
+      - [6, -0.565,  9.0]
+      - [7,  2.450, -9.0]
+      - [8,  2.450,  9.0]
+
+# ------------------------------------------------------------ aydınlatma
+# Tavana asılı lamba ızgarası; her koridorun üstünde bir hat. Barkodun
+# okunabilmesi için bol ve yumuşak ışık şart, parlama olmasın diye
+# specular düşük.
+#
+# height 6.00: 5 m'lik rafların 1 m üstünde. Bina serbest yüksekliği 10 m
+# ama lambaları tavana (10 m) asmak raf yüzünü karartıyor; gerçek depolarda
+# da yüksek raflı bölgede armatürler koridor üstüne alçaltılır.
+lighting:
+  ambient: [0.45, 0.45, 0.45, 1.0]
+  background: [0.55, 0.58, 0.62, 1.0]
+  ceiling_lights:
+    height: 6.00
+    # config-X (göz ekseni, dünyada Y): 16.2 m koşu boyunca 4 armatür
+    x_positions: [-6.75, -2.25, 2.25, 6.75]
+    # config-Y = koridor merkezleri (dünyada X); daralan koridorlarla birlikte
+    # armatür hattı da kaydı -- racking.aisles[].y_center ile aynı olmalı.
+    y_positions: [-8.500, -4.215, -0.565, 2.450]
+    diffuse: [0.85, 0.85, 0.80, 1.0]
+    specular: [0.10, 0.10, 0.10, 1.0]
+    attenuation_range: 14.0
+
+# --------------------------------------------------------------- kameralar
+# Furkan'ın x500_scanner'ı: iki YAN kamera, yaw +-90, raf yüzlerine bakar.
+# Bizim eski "front" kameramızın işlevsel karşılığı. Aşağı/arka kamera yok.
+#
+# 640x480 -> 1920x1080 yükseltmesi ZORUNLU: 640 px'de kutu QR'ı 1.2 m'den
+# 1.85 px/modül eder (okunmaz). Bu tek değişiklik bütçeyi geri getiriyor.
+# update_rate 30 -> 20: iki adet 1080p kamera 30 Hz'de iGPU'yu boğuyor;
+# eski projedeki kameralar da 20 Hz'de çalışıyordu.
+cameras:
+  - name: left
+    width: 1920
+    height: 1080
+    hfov: 1.0472            # rad, 60 derece -- Furkan'ın değeri korundu
+    # base_link'e göre; Furkan'ın build_scanner_drone.py'sindeki yerleşim.
+    pose: [0.050, 0.120, -0.020, 0.0, 0.0, 1.5707963]
+    near: 0.05
+    far: 40.0
+    update_rate: 20
+  - name: right
+    width: 1920
+    height: 1080
+    hfov: 1.0472
+    pose: [0.050, -0.120, -0.020, 0.0, 0.0, -1.5707963]
+    near: 0.05
+    far: 40.0
+    update_rate: 20
+
+# -------------------------------------------------- navigasyon sensörleri
+# BU PROJEDE SENSÖR TANIMI YOK -- bilinçli.
+# x500_scanner, PX4'ün `x500_flow` modelini merge-include ediyor; optik akış
+# sensörü ve LW20 mesafe ölçer oradan geliyor, link adları PX4'ün gz köprüsü
+# tarafından sabit kodlanmış (flow_link / lidar_sensor_link). İkinci bir
+# yerde tanımlamak sessiz bir çakışma kaynağı olurdu.
+#
+# ZEMİN DOKUSU VAZGEÇİLMEZ (tools/gen_world.py): eski projede aylarca
+# "L1 runaway" sanılan arızanın kök nedeni dokusuz zemindi -- optik akış
+# özellik bulamıyordu. Furkan'ın hattı da saf optik akışa dayandığı için
+# betonun dokusu bu dünyada da kalmalı.
+
+# ------------------------------------------------------------ kalkış yeri
+# Furkan'ın warehouse_scanner.py'sindeki SPAWN_X, SPAWN_Y = -8.5, -9.0
+# ile birebir: koridor 1'in güney girişi, raf koşusunun (y=-8.1) 0.9 m
+# dışında, çapraz koridorda. DÜNYA koordinatı, world_yaw'dan geçmez.
+#
+# z=0.30: araç buradan bırakılıp kendi oturma yüksekliğine düşer.
+# PX4_GZ_MODEL_POSE yalnızca konumu geçersiz kılar, modelin kendi
+# pose'undaki yükseklik uygulanmaz -- bu yüzden z burada açıkça verilir.
+spawn:
+  pose: [-8.5, -9.0, 0.30, 0.0, 0.0, 0.0]
+
+# ===========================================================================
+# FURKAN'A GEÇECEK KISITLAR (rota onun sorumluluğu)
+# ===========================================================================
+# Bu yerleşim onun mevcut sabit kodlu rotasını GEÇERSİZ kılar:
+#
+#   CORRIDOR_X = [-8.5, -3.9, 0.7, 5.3]     ->  DEĞİŞTİ, koridorlar daraldı:
+#                                               [-8.500, -4.215, -0.565, 2.450]
+#   Y_SOUTH, Y_NORTH = -8.0, 8.0            ->  DEĞİŞMEDİ [OK]
+#   SPAWN_X, SPAWN_Y = -8.5, -9.0           ->  DEĞİŞMEDİ [OK]
+#   FLIGHT_Z = [0.5, 1.15, 1.8]             ->  DEĞİŞTİ, yenisi aşağıda
+#
+# Eski dünyada raflar 2.0 m'lik hafif raftı (plakalar 0.35/1.0/1.65).
+# Yenisi 5.0 m'lik gerçek palet rafı, kiriş kotları 0.50/2.20/3.90.
+# Kamera raf yüzünün ortasını görsün diye uçuş irtifası ~ kiriş kotu +
+# yükün yarısı:
+#
+#   FLIGHT_Z = [0.75, 2.45, 4.15]
+#
+# Ayrıca koridorlar artık eşit değil: 2.40 / 1.77 / 1.13 / 0.50 m.
+# Bu, raf yüzüne durma mesafesini (standoff) TEK BİR SAYI olmaktan
+# çıkarıyor -- scanner/layout.json'da her yüzün kendi `standoff`u var:
+#
+#   A, B (k1 2.40) -> 0.80    C, D (k2 1.77) -> 0.80
+#   E, F (k3 1.13) -> 0.565   G, H (k4 0.50) -> 0.25   (ikisi de orta çizgi)
+#
+# Waypoint toleransı 0.40 m koridor 3'te ARTIK GÜVENLİ DEĞİL (yanda
+# 0.241 m pay kaldı), koridor 4'te ise araç zaten sığmıyor (-0.074 m).
+# Rota tarafında bu iki koridorun ayrıca ele alınması gerekiyor.

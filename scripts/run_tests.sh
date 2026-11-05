@@ -1,0 +1,91 @@
+#!/bin/bash
+#
+# Run everything that can be checked without a simulator.
+#
+#   ./scripts/run_tests.sh
+#
+# All suites take seconds and need no flight, which is the point: a scan takes
+# thirteen minutes and only tells you the total. These say which piece of the
+# geometry is wrong.
+set -u
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PY="${PY:-$HOME/autonomous_landing/venv/bin/python}"
+if [ ! -x "$PY" ]; then
+    PY="$HERE/.venv/bin/python"
+fi
+if [ ! -x "$PY" ]; then
+    echo "no interpreter; set PY, for example"
+    echo "  PY=~/autonomous_landing/venv/bin/python $0"
+    exit 1
+fi
+
+cd "$HERE/scanner" || exit 1
+failed=0
+
+# Whether a suite passed is its exit status, not a phrase in its output. The
+# phrase was "all checks passed|8/8 passed", which stopped being true the day
+# a suite gained a ninth check, and would also have called a suite that
+# printed the phrase and then crashed a pass.
+run() {
+    echo "== $1"
+    out=$("$PY" "$1" 2>&1)
+    status=$?
+    printf '%s\n' "$out" | grep -v libprotobuf | grep -v DynamicFactory \
+        | tail -2 | sed 's/^/   /'
+    if [ "$status" -ne 0 ]; then
+        echo "   !! FAILED (exit $status)"
+        failed=$((failed + 1))
+    fi
+    echo
+}
+
+# The pose a code is filed against, which is where a whole scan went wrong
+# once: frames were placed against wherever the vehicle had reached by the
+# time they were decoded rather than where it was when they were taken.
+run test_pose_history.py
+
+# Which face a code lands on and which side of the vehicle. The centre of a
+# frame cannot show the second one, since the bearing is zero there.
+run test_two_camera.py
+
+# Reading a frame in strips, because the detector loses codes when several
+# share one. Checks both halves: that more are found, and that a strip
+# coordinate is mapped back to the frame, since the bearing to a box comes
+# from where its code sits in the frame.
+run test_strips.py
+
+# The marker correction geometry.
+run test_drift_correction.py
+
+# Where the optical axis goes, and whether the codes fit the frame at all.
+# The vertical half of the geometry, which had never been checked and which
+# cost the narrowest aisle two codes a run: its frame is 0.18 m tall and its
+# codes sat 0.049 m below the axis.
+run test_framing.py
+run test_decode_scale.py
+
+# The leg arithmetic that moved to flight.py, against the formulas it was
+# moved out of: how fast a leg is flown, where the setpoint sits at each
+# tick, and how a heading change is swept. vehicle/ is checked against the
+# same functions, so a difference here is a difference there.
+run test_flight.py
+
+# When a waypoint counts as reached: in position, still, and on its heading.
+# Position alone let the vehicle start a leg of the 0.50 m aisle still
+# swinging, 25 degrees off its heading.
+run test_settle.py
+
+# The report layer has geometry of its own now: a barcode reading carries a
+# pose and a pixel position, and turning those into a box is the scanner's
+# arithmetic written against a different yaw convention. A sign error there
+# puts every code on the wrong side of the aisle, and the shelf snap hides it.
+cd "$HERE/report" || exit 1
+run test_barcode_inventory.py
+
+if [ "$failed" -eq 0 ]; then
+    echo "all suites passed"
+else
+    echo "$failed suite(s) failed"
+fi
+exit "$failed"
