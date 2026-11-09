@@ -22,6 +22,8 @@ from mavsdk import System
 
 WORLD = "warehouse"
 DRONE = "x500_c27_0"
+# The PX4 tree being checked: PX4_DIR, as in setup_px4.sh and launch_sim.sh.
+PX4 = os.path.expanduser(os.environ.get("PX4_DIR", "~/PX4-Autopilot"))
 
 REQUIRED_TOPICS = {
     "visual odometry":  f"/model/{DRONE}/odometry_with_covariance",
@@ -56,8 +58,7 @@ def check_gazebo_topics():
 
 def check_model_file():
     print("\nVehicle model")
-    path = os.path.expanduser(
-        "~/PX4-Autopilot/Tools/simulation/gz/models/x500_c27/model.sdf")
+    path = os.path.join(PX4, "Tools/simulation/gz/models/x500_c27/model.sdf")
     try:
         with open(path) as handle:
             sdf = handle.read()
@@ -70,9 +71,8 @@ def check_model_file():
 
 def check_airframe():
     print("\nAirframe configuration")
-    path = os.path.expanduser(
-        "~/PX4-Autopilot/ROMFS/px4fmu_common/init.d-posix/airframes/"
-        "4023_gz_x500_c27")
+    path = os.path.join(
+        PX4, "ROMFS/px4fmu_common/init.d-posix/airframes/4023_gz_x500_c27")
     try:
         with open(path) as handle:
             text = handle.read()

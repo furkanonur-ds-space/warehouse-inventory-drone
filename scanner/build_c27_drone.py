@@ -119,7 +119,10 @@ for _i, _a in enumerate(sys.argv):
         TOF_H_SAMPLES, TOF_V_SAMPLES = (
             int(v) for v in sys.argv[_i + 1].lower().split("x"))
 
-GZ_MODELS = os.path.expanduser('~/PX4-Autopilot/Tools/simulation/gz/models')
+# PX4_DIR as in setup_px4.sh; see build_starling2.py.
+GZ_MODELS = os.path.join(
+    os.path.expanduser(os.environ.get('PX4_DIR', '~/PX4-Autopilot')),
+    'Tools', 'simulation', 'gz', 'models')
 model_name = "x500_c27"
 model_dir = os.path.join(GZ_MODELS, model_name)
 os.makedirs(model_dir, exist_ok=True)

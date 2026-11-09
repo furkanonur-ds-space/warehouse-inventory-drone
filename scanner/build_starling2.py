@@ -40,8 +40,11 @@ import re
 import shutil
 import sys
 
-PX4_MODELS = os.path.expanduser(
-    "~/PX4-Autopilot/Tools/simulation/gz/models")
+# The PX4 tree comes from PX4_DIR, as in setup_px4.sh and launch_sim.sh; a
+# fixed ~/PX4-Autopilot here once overwrote another checkout's models.
+PX4_MODELS = os.path.join(
+    os.path.expanduser(os.environ.get("PX4_DIR", "~/PX4-Autopilot")),
+    "Tools", "simulation", "gz", "models")
 
 # --- THE VEHICLE, FROM MODALAI'S OWN PARAMETERS ---------------------------
 # params/v1.18/D0014/D0014_Starling_2_base.params, which is the Starling 2.

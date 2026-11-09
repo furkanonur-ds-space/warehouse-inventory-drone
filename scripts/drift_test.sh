@@ -23,7 +23,7 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PY="${PY:-$HOME/autonomous_landing/venv/bin/python}"
 [ -x "$PY" ] || PY="$HERE/.venv/bin/python"
-SDF="$HOME/PX4-Autopilot/Tools/simulation/gz/models/x500_c27/model.sdf"
+SDF="${PX4_DIR:-$HOME/PX4-Autopilot}/Tools/simulation/gz/models/x500_c27/model.sdf"
 
 wired() {
     [ -f "$SDF" ] && grep -q "odom_covariance_topic" "$SDF"

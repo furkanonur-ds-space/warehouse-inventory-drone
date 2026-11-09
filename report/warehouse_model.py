@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 from pathlib import Path
 
@@ -38,7 +39,8 @@ WORLD_SDF = REPO_ROOT / "warehouse" / "generated" / "gz" / "worlds" / "warehouse
 # The vehicle that flew, which carries the cameras' own resolution and field
 # of view. Installed into the PX4 tree by setup_px4.sh, so it may not be on
 # the machine reading a run; the C27 values below stand in when it is not.
-GZ_MODELS = Path.home() / "PX4-Autopilot" / "Tools" / "simulation" / "gz" / "models"
+PX4 = Path(os.environ.get("PX4_DIR", "~/PX4-Autopilot")).expanduser()
+GZ_MODELS = PX4 / "Tools" / "simulation" / "gz" / "models"
 LAYOUT = REPO_ROOT / "scanner" / "layout.json"
 GROUND_TRUTH = REPO_ROOT / "warehouse" / "ground_truth.json"
 INVENTORY = REPO_ROOT / "out" / "inventory_scanned.json"
@@ -256,7 +258,7 @@ def load_box_geometry(cfg: dict, path: Path = WORLD_SDF) -> dict[str, dict]:
     """
     p = Path(path)
     if not p.exists():
-        alt = Path.home() / "PX4-Autopilot" / "Tools" / "simulation" / "gz" / "worlds" / "warehouse.sdf"
+        alt = PX4 / "Tools" / "simulation" / "gz" / "worlds" / "warehouse.sdf"
         if not alt.exists():
             return {}
         p = alt
